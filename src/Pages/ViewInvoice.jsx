@@ -4,13 +4,16 @@ import { db } from "../config";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
+import { useNavigate } from "react-router-dom";
+import Logo from "../assets/Logo.png";
 
 const ViewInvoice = () => {
+  const navigate = useNavigate();
   const [invoices, setInvoices] = useState([]);
   const [filteredInvoices, setFilteredInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
-  const [showPdfPreview, setShowPdfPreview] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [invoiceToDelete, setInvoiceToDelete] = useState(null);
   const [notification, setNotification] = useState({ message: "", type: "", show: false });
@@ -122,6 +125,18 @@ const ViewInvoice = () => {
 
   // Get unique client names for filter dropdown
   const clientNames = [...new Set(invoices.map(invoice => invoice.clientName))].sort();
+
+  // Edit invoice
+  const handleEditInvoice = (invoice) => {
+    // Navigate to edit page with invoice data
+    navigate(`/edit-invoice/${invoice.id}`, { state: { invoice } });
+  };
+
+  // View invoice details
+  const handleViewDetails = (invoice) => {
+    setSelectedInvoice(invoice);
+    setShowDetailsModal(true);
+  };
 
   // Delete invoice confirmation
   const confirmDeleteInvoice = (invoice) => {
@@ -323,27 +338,6 @@ const ViewInvoice = () => {
     }
   };
 
-  // View/Preview PDF
-  const handleViewPDF = async (invoice) => {
-    try {
-      setSelectedInvoice(invoice);
-      setShowPdfPreview(true);
-      
-      // Clear previous preview
-      const container = document.getElementById("pdf-preview-container");
-      if (container) {
-        container.innerHTML = '<div style="text-align: center; padding: 40px;"><p>Generating PDF preview...</p></div>';
-      }
-      
-      // Generate and display PDF
-      await generateAndDisplayPDF(invoice);
-      showNotification(`PDF preview ready for invoice ${invoice.invoiceNumber}`, "info");
-    } catch (error) {
-      console.error("Error in handleViewPDF:", error);
-      showNotification("Failed to generate PDF preview", "error");
-    }
-  };
-
   // Download PDF
   const handleDownloadPDF = async (invoice) => {
     try {
@@ -352,36 +346,6 @@ const ViewInvoice = () => {
     } catch (error) {
       console.error("Error in handleDownloadPDF:", error);
       showNotification("Failed to generate PDF", "error");
-    }
-  };
-
-  const generateAndDisplayPDF = async (invoice) => {
-    try {
-      // Create PDF with proper structure (8 rows per page)
-      const pdf = await generatePDFDocument(invoice);
-      
-      // Display in preview container
-      const pdfData = pdf.output("datauristring");
-      const container = document.getElementById("pdf-preview-container");
-      if (container) {
-        container.innerHTML = `
-          <embed 
-            src="${pdfData}" 
-            type="application/pdf" 
-            width="100%" 
-            height="580px" 
-            style="border: 2px solid #001F3F; border-radius: 8px;"
-            title="PDF Preview"
-          />
-        `;
-      }
-    } catch (error) {
-      console.error("Error generating PDF:", error);
-      const container = document.getElementById("pdf-preview-container");
-      if (container) {
-        container.innerHTML = `<div style="color: red; text-align: center; padding: 40px;"><p>Error generating PDF: ${error.message}</p></div>`;
-      }
-      throw error;
     }
   };
 
@@ -399,238 +363,274 @@ const ViewInvoice = () => {
     }
   };
 
-  const generatePDFDocument = async (invoice) => {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const materials = invoice.materials || [];
-        const totals = invoice.totals || calculateInvoiceTotals(invoice);
-        const materialsPerPage = 8;
-        const pageCount = Math.ceil(materials.length / materialsPerPage);
-        
-        const pdf = new jsPDF({
-          orientation: "portrait",
-          unit: "mm",
-          format: "a4",
-        });
 
-        // Generate each page
-        for (let page = 0; page < pageCount; page++) {
-          if (page > 0) {
-            pdf.addPage();
-          }
 
-          // Create a simple HTML string for the page
-          const pageHTML = generatePageHTML(invoice, page, materialsPerPage, pageCount, totals);
-          
-          // Create temporary container
-          const tempContainer = document.createElement("div");
-          tempContainer.style.position = "fixed";
-          tempContainer.style.left = "-10000px";
-          tempContainer.style.top = "0";
-          tempContainer.style.width = "210mm";
-          tempContainer.style.height = "297mm";
-          tempContainer.style.backgroundColor = "white";
-          tempContainer.style.padding = "10mm 15mm";
-          tempContainer.style.boxSizing = "border-box";
-          
-          tempContainer.innerHTML = pageHTML;
-          document.body.appendChild(tempContainer);
+const generatePDFDocument = async (invoice) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const materials = invoice.materials || [];
+      const totals = invoice.totals || calculateInvoiceTotals(invoice);
+      const materialsPerPage = 13; // Changed from 8 to 13 to match original
+      const pageCount = Math.ceil(materials.length / materialsPerPage);
+      
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
 
-          // Wait for images to load
-          await new Promise(resolve => setTimeout(resolve, 500));
-
-          // Convert to canvas
-          const canvas = await html2canvas(tempContainer, {
-            scale: 2,
-            useCORS: true,
-            backgroundColor: "#ffffff",
-            logging: false,
-          });
-
-          // Remove temporary container
-          document.body.removeChild(tempContainer);
-
-          // Add image to PDF
-          const imgData = canvas.toDataURL("image/png");
-          const imgWidth = 190; // mm
-          const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-          pdf.addImage(imgData, "PNG", 10, 10, imgWidth, imgHeight);
+      // Generate each page
+      for (let page = 0; page < pageCount; page++) {
+        if (page > 0) {
+          pdf.addPage();
         }
 
-        resolve(pdf);
-      } catch (error) {
-        reject(error);
+        // Create a simple HTML string for the page
+        const pageHTML = generatePageHTML(invoice, page, materialsPerPage, pageCount, totals);
+        
+        // Create temporary container - Matching original structure
+        const tempContainer = document.createElement("div");
+        tempContainer.style.position = "fixed";
+        tempContainer.style.left = "-10000px";
+        tempContainer.style.top = "0";
+        tempContainer.style.width = "200mm"; // Adjusted for border
+        tempContainer.style.backgroundColor = "white";
+        tempContainer.style.fontFamily = "'Poppins', sans-serif";
+        tempContainer.style.overflow = "visible";
+        
+        // Create inner page div with border and padding
+        const pageDiv = document.createElement("div");
+        pageDiv.style.width = "200mm";
+        pageDiv.style.padding = "8mm 6mm";
+        pageDiv.style.margin = "0";
+        pageDiv.style.backgroundColor = "white";
+        pageDiv.style.boxSizing = "border-box";
+        pageDiv.style.fontFamily = "'Poppins', sans-serif";
+        pageDiv.style.minHeight = "285mm";
+        pageDiv.style.border = "2px solid #001F3F";
+        pageDiv.style.borderRadius = "3px";
+        
+        pageDiv.innerHTML = pageHTML;
+        tempContainer.appendChild(pageDiv);
+        document.body.appendChild(tempContainer);
+
+        // Wait for images to load
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Convert to canvas - Matching original settings
+        const canvas = await html2canvas(pageDiv, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: "#ffffff",
+          width: pageDiv.offsetWidth,
+          height: pageDiv.offsetHeight,
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: pageDiv.scrollWidth,
+          windowHeight: pageDiv.scrollHeight,
+          logging: false,
+        });
+
+        // Remove temporary container
+        document.body.removeChild(tempContainer);
+
+        // Add image to PDF - Matching original dimensions
+        const imgData = canvas.toDataURL("image/png");
+        const imgWidth = 186; // Adjusted for border
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+        const xPos = 12; // Adjusted for border
+        const yPos = 12; // Adjusted for border
+        pdf.addImage(imgData, "PNG", xPos, yPos, imgWidth, imgHeight);
       }
-    });
-  };
 
-  const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) => {
-    const materials = invoice.materials || [];
-    const startIdx = page * materialsPerPage;
-    const endIdx = Math.min(startIdx + materialsPerPage, materials.length);
-    
-    let html = `
-      <div style="font-family: 'Arial', sans-serif; color: #001F3F; width: 100%;">
-    `;
+      resolve(pdf);
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
 
-    // Header (only on first page)
-    if (page === 0) {
-      html += `
-        <!-- Header -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 2px solid #001F3F; padding-bottom: 15px;">
+// Helper function to generate page HTML matching the original structure
+const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) => {
+  const startIdx = page * materialsPerPage;
+  const endIdx = Math.min(startIdx + materialsPerPage, invoice.materials.length);
+  
+  let html = '';
+
+  // Header Section (only on first page)
+  if (page === 0) {
+    html += `
+      <div class="pdf-header" style="margin-bottom: 10px; font-family: 'Poppins', sans-serif;">
+        <!-- Company Header -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1.5px solid #001F3F; font-family: 'Poppins', sans-serif;">
           <!-- Left side - Logo -->
-          <div style="flex: 1;">
-            <div style="height: 80px; display: block; color: #001F3F; font-weight: bold; font-size: 18px;">
-              [COMPANY LOGO]
-            </div>
+          <div style="flex: 1; display: flex; align-items: center;">
+            <img src="${invoice.logo || Logo}" alt="Company Logo" style="height: 130px; width: auto; display: block; object-fit: contain;">
           </div>
           
           <!-- Right side - Invoice details -->
-          <div style="flex: 1; text-align: right;">
-            <h2 style="margin: 0 0 15px 0; font-size: 24px; color: #001F3F;">TAX INVOICE</h2>
-            <div style="font-size: 14px; line-height: 1.5;">
+          <div style="flex: 1; text-align: right; font-family: 'Poppins', sans-serif;">
+            <h2 style="margin: 0 0 8px 0; font-size: 20px; color: #001F3F; font-weight: 600; font-family: 'Poppins', sans-serif;">TAX INVOICE</h2>
+            <div style="font-size: 11px; line-height: 1.5; color: #001F3F; font-family: 'Poppins', sans-serif;">
               <div><strong>Invoice No:</strong> ${invoice.invoiceNumber}</div>
-              <div><strong>Date:</strong> ${formatDate(invoice.invoiceDate)}</div>
-              <div><strong>PO Number:</strong> ${invoice.poNumber || "N/A"}</div>
-              <div><strong>Bill No:</strong> ${invoice.BillNo || "N/A"}</div>
-              <div><strong>DC No:</strong> ${invoice.DCNO || "N/A"}</div>
-              <div><strong>DC Date:</strong> ${formatDate(invoice.DCDate)}</div>
+              <div><strong>Date:</strong> ${new Date(invoice.invoiceDate).toLocaleDateString("en-IN")}</div>
+              ${invoice.poNumber ? `<div><strong>PO Number:</strong> ${invoice.poNumber}</div>` : ''}
+              ${invoice.BillNo ? `<div><strong>Bill No:</strong> ${invoice.BillNo}</div>` : ''}
+              ${invoice.DCNO ? `<div><strong>DC No:</strong> ${invoice.DCNO}</div>` : ''}
+              ${invoice.DCDate ? `<div><strong>DC Date:</strong> ${invoice.DCDate}</div>` : ''}
             </div>
           </div>
         </div>
-
-        <!-- Client Details -->
-        <div style="display: flex; justify-content: space-between; margin-top: 20px; padding: 15px; background-color: #F5F7FA; border: 1px solid #001F3F; border-radius: 5px; font-size: 14px;">
+        
+        <!-- Client details section -->
+        <div style="display: flex; justify-content: space-between; margin-top: 10px; padding: 10px; background-color: #F5F7FA; border: 1px solid #001F3F; border-radius: 4px; font-size: 11px; font-family: 'Poppins', sans-serif; line-height: 1.4;">
           <!-- From -->
-          <div style="flex: 1;">
-            <h3 style="margin: 0 0 10px 0; font-size: 16px; color: #001F3F;">From:</h3>
-            <div>
-              <div><strong>${invoice.companyName || "N/A"}</strong></div>
-              <div>${invoice.companyAddress || ""}</div>
-              <div><strong>Email:</strong> ${invoice.companyemail || ""}</div>
-              <div><strong>GSTIN:</strong> ${invoice.companyGSTIN || ""}</div>
-              <div><strong>Contact:</strong> ${invoice.companyContact || ""}</div>
-              <div><em>${invoice.companyDescription || ""}</em></div>
+          <div style="flex: 1; font-family: 'Poppins', sans-serif;">
+            <h3 style="margin: 0 0 6px 0; color: #001F3F; font-size: 13px; font-weight: 600; font-family: 'Poppins', sans-serif;">From:</h3>
+            <div style="color: #001F3F; font-family: 'Poppins', sans-serif;">
+              <div style="font-weight: 600; margin-bottom: 3px;">${invoice.companyName}</div>
+              <div style="margin-bottom: 3px;">${invoice.companyAddress}</div>
+              ${invoice.companyemail ? `<div style="margin-bottom: 3px;"><strong>Email:</strong> ${invoice.companyemail}</div>` : ''}
+              ${invoice.companyGSTIN ? `<div style="margin-bottom: 3px;"><strong>GSTIN:</strong> ${invoice.companyGSTIN}</div>` : ''}
+              ${invoice.companyContact ? `<div style="margin-bottom: 3px;"><strong>Contact:</strong> ${invoice.companyContact}</div>` : ''}
+              ${invoice.companyDescription ? `<div style="margin-top: 4px; font-style: italic; font-size: 10px;"><em>${invoice.companyDescription}</em></div>` : ''}
             </div>
           </div>
           
           <!-- To -->
-          <div style="flex: 1; margin-left: 30px;">
-            <h3 style="margin: 0 0 10px 0; font-size: 16px; color: #001F3F;">To:</h3>
-            <div>
-              <div><strong>${invoice.clientName}</strong></div>
-              <div>${invoice.clientAddress || ""}</div>
-              <div><strong>GSTIN:</strong> ${invoice.clientGSTIN || ""}</div>
-              <div><strong>Contact:</strong> ${invoice.clientContact || ""}</div>
+          <div style="flex: 1; margin-left: 20px; font-family: 'Poppins', sans-serif;">
+            <h3 style="margin: 0 0 6px 0; color: #001F3F; font-size: 13px; font-weight: 600; font-family: 'Poppins', sans-serif;">To:</h3>
+            <div style="color: #001F3F; font-family: 'Poppins', sans-serif;">
+              <div style="font-weight: 600; margin-bottom: 3px;">${invoice.clientName}</div>
+              <div style="margin-bottom: 3px;">${invoice.clientAddress}</div>
+              ${invoice.clientGSTIN ? `<div style="margin-bottom: 3px;"><strong>GSTIN:</strong> ${invoice.clientGSTIN}</div>` : ''}
+              ${invoice.clientContact ? `<div style="margin-bottom: 3px;"><strong>Contact:</strong> ${invoice.clientContact}</div>` : ''}
             </div>
           </div>
         </div>
-      `;
-    }
-
-    // Materials Table
-    html += `
-      <table style="width: 100%; border-collapse: collapse; margin-top: ${page === 0 ? '20px' : '10px'}; font-size: 11px; table-layout: fixed;">
-        <thead>
-          <tr style="background-color: #001F3F; color: white;">
-            <th style="border: 1px solid #001F3F; padding: 8px; text-align: center; width: 5%;">S.No.</th>
-            <th style="border: 1px solid #001F3F; padding: 8px; width: 45%;">Material Description</th>
-            <th style="border: 1px solid #001F3F; padding: 8px; text-align: center; width: 15%;">HSN/SAC</th>
-            <th style="border: 1px solid #001F3F; padding: 8px; text-align: center; width: 10%;">Qty.</th>
-            <th style="border: 1px solid #001F3F; padding: 8px; text-align: right; width: 15%;">Rate (₹)</th>
-            <th style="border: 1px solid #001F3F; padding: 8px; text-align: right; width: 20%;">Amount (₹)</th>
-          </tr>
-        </thead>
-        <tbody>
+      </div>
     `;
+  }
 
-    // Add material rows
-    for (let i = startIdx; i < endIdx; i++) {
-      const material = materials[i];
-      html += `
-        <tr style="${i % 2 === 0 ? 'background-color: #F5F7FA;' : ''}">
-          <td style="border: 1px solid #001F3F; padding: 8px; text-align: center;">${i + 1}</td>
-          <td style="border: 1px solid #001F3F; padding: 8px;">${material.description}</td>
-          <td style="border: 1px solid #001F3F; padding: 8px; text-align: center;">${material.hsn}</td>
-          <td style="border: 1px solid #001F3F; padding: 8px; text-align: center;">${material.quantity}</td>
-          <td style="border: 1px solid #001F3F; padding: 8px; text-align: right;">${formatNumber(material.rate)}</td>
-          <td style="border: 1px solid #001F3F; padding: 8px; text-align: right; font-weight: bold;">${formatNumber(material.amount)}</td>
+  // Materials Table
+  html += `
+    <table style="width: 100%; border-collapse: collapse; font-size: 10px; margin-top: ${page === 0 ? '10px' : '0'}; color: #001F3F; font-family: 'Poppins', sans-serif; table-layout: fixed;">
+      <thead style="background-color: #001F3F; color: white; font-family: 'Poppins', sans-serif;">
+        <tr style="font-family: 'Poppins', sans-serif; height: 22px;">
+          <th style="border: 1px solid #001F3F; padding: 5px; width: 4%; font-family: 'Poppins', sans-serif; font-size: 10px;">S.No.</th>
+          <th style="border: 1px solid #001F3F; padding: 5px; width: 52%; font-family: 'Poppins', sans-serif; font-size: 10px;">Material Description</th>
+          <th style="border: 1px solid #001F3F; padding: 5px; width: 10%; font-family: 'Poppins', sans-serif; font-size: 10px;">HSN/SAC</th>
+          <th style="border: 1px solid #001F3F; padding: 5px; width: 8%; font-family: 'Poppins', sans-serif; font-size: 10px;">Qty.</th>
+          <th style="border: 1px solid #001F3F; padding: 5px; width: 13%; font-family: 'Poppins', sans-serif; font-size: 10px;">Rate (₹)</th>
+          <th style="border: 1px solid #001F3F; padding: 5px; width: 13%; font-family: 'Poppins', sans-serif; font-size: 10px;">Amount (₹)</th>
         </tr>
-      `;
-    }
+      </thead>
+      <tbody style="font-family: 'Poppins', sans-serif;">
+  `;
 
-    // Add empty rows if needed
-    const emptyRows = materialsPerPage - (endIdx - startIdx);
-    for (let i = 0; i < emptyRows; i++) {
-      html += `
-        <tr style="height: 30px;">
-          <td style="border: 1px solid #001F3F; padding: 8px;">${endIdx + i + 1}</td>
-          <td style="border: 1px solid #001F3F; padding: 8px;"></td>
-          <td style="border: 1px solid #001F3F; padding: 8px;"></td>
-          <td style="border: 1px solid #001F3F; padding: 8px;"></td>
-          <td style="border: 1px solid #001F3F; padding: 8px;"></td>
-          <td style="border: 1px solid #001F3F; padding: 8px;"></td>
-        </tr>
-      `;
-    }
-
+  // Add material rows
+  for (let i = startIdx; i < endIdx; i++) {
+    const material = invoice.materials[i];
+    const description = material.description || '';
+    const truncatedDescription = description.length > 120 ? 
+      description.substring(0, 120) + '...' : description;
+    
     html += `
-        </tbody>
-      </table>
+      <tr style="height: 20px; background-color: ${i % 2 === 0 ? '#F5F7FA' : 'white'}; font-family: 'Poppins', sans-serif;">
+        <td style="border: 1px solid #001F3F; padding: 5px; text-align: center; color: #001F3F; font-family: 'Poppins', sans-serif; font-size: 10px; vertical-align: top;">${i + 1}.</td>
+        <td style="border: 1px solid #001F3F; padding: 5px; color: #001F3F; font-family: 'Poppins', sans-serif; font-size: 10px; vertical-align: top; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${description}">${truncatedDescription}</td>
+        <td style="border: 1px solid #001F3F; padding: 5px; text-align: center; color: #001F3F; font-family: 'Poppins', sans-serif; font-size: 10px; vertical-align: top;">${material.hsn || ''}</td>
+        <td style="border: 1px solid #001F3F; padding: 5px; text-align: center; color: #001F3F; font-family: 'Poppins', sans-serif; font-size: 10px; vertical-align: top;">${material.quantity || ''}</td>
+        <td style="border: 1px solid #001F3F; padding: 5px; text-align: right; color: #001F3F; font-family: 'Poppins', sans-serif; font-size: 10px; vertical-align: top;">${formatNumber(material.rate)}</td>
+        <td style="border: 1px solid #001F3F; padding: 5px; text-align: right; font-weight: bold; color: #001F3F; font-family: 'Poppins', sans-serif; font-size: 10px; vertical-align: top;">${formatNumber(material.amount)}</td>
+      </tr>
     `;
+  }
 
-    // Totals (only on last page)
-    if (page === pageCount - 1) {
-      html += `
-        <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px;">
-          <tr style="background-color: #E8F4F8;">
-            <td colspan="5" style="border: 1px solid #001F3F; padding: 10px; text-align: right; font-weight: bold;">Sub Total:</td>
-            <td style="border: 1px solid #001F3F; padding: 10px; text-align: right; font-weight: bold;">₹ ${formatNumber(totals.subTotal)}</td>
-          </tr>
-          <tr style="background-color: #F0F8E8;">
-            <td colspan="5" style="border: 1px solid #001F3F; padding: 10px; text-align: right; font-weight: bold;">CGST (${invoice.cgstPercentage || 0}%):</td>
-            <td style="border: 1px solid #001F3F; padding: 10px; text-align: right; font-weight: bold;">₹ ${formatNumber(totals.cgstAmount)}</td>
-          </tr>
-          <tr style="background-color: #F0F8E8;">
-            <td colspan="5" style="border: 1px solid #001F3F; padding: 10px; text-align: right; font-weight: bold;">SGST (${invoice.sgstPercentage || 0}%):</td>
-            <td style="border: 1px solid #001F3F; padding: 10px; text-align: right; font-weight: bold;">₹ ${formatNumber(totals.sgstAmount)}</td>
-          </tr>
-          <tr style="background-color: #001F3F; color: white;">
-            <td colspan="5" style="border: 1px solid #001F3F; padding: 12px; text-align: right; font-weight: bold; font-size: 13px;">GRAND TOTAL:</td>
-            <td style="border: 1px solid #001F3F; padding: 12px; text-align: right; font-weight: bold; font-size: 13px;">₹ ${formatNumber(totals.total)}</td>
-          </tr>
-        </table>
+  // Add empty rows if needed
+  const remainingRows = materialsPerPage - (endIdx - startIdx);
+  for (let i = 0; i < remainingRows; i++) {
+    html += `
+      <tr style="height: 20px; font-family: 'Poppins', sans-serif;">
+        <td style="border: 1px solid #001F3F; padding: 5px; color: #001F3F; font-family: 'Poppins', sans-serif; font-size: 10px;">${endIdx + i + 1}.</td>
+        <td style="border: 1px solid #001F3F; padding: 5px; font-family: 'Poppins', sans-serif;"></td>
+        <td style="border: 1px solid #001F3F; padding: 5px; font-family: 'Poppins', sans-serif;"></td>
+        <td style="border: 1px solid #001F3F; padding: 5px; font-family: 'Poppins', sans-serif;"></td>
+        <td style="border: 1px solid #001F3F; padding: 5px; font-family: 'Poppins', sans-serif;"></td>
+        <td style="border: 1px solid #001F3F; padding: 5px; font-family: 'Poppins', sans-serif;"></td>
+      </tr>
+    `;
+  }
 
-        <!-- Footer -->
-        <div style="margin-top: 30px;">
-          <!-- Amount in Words -->
-          <div style="border: 2px solid #001F3F; padding: 10px; background-color: #F5F7FA; border-radius: 5px 5px 0 0;">
-            <div><strong>Amount Chargeable (in words):</strong> Indian Rupees ${numberToWords(totals.total).toUpperCase()}</div>
-            <div style="text-align: right; margin-top: 5px; font-weight: bold;">E. & O.E</div>
+  // Add totals for last page
+  if (page === pageCount - 1) {
+    html += `
+      <!-- Subtotal -->
+      <tr style="background-color: #E8F4F8; font-family: 'Poppins', sans-serif; height: 22px;">
+        <td colspan="5" style="border: 1px solid #001F3F; padding: 7px; text-align: right; font-weight: bold; font-size: 11px; color: #001F3F; font-family: 'Poppins', sans-serif;">Sub Total:</td>
+        <td style="border: 1px solid #001F3F; padding: 7px; font-weight: bold; font-size: 11px; text-align: right; color: #001F3F; font-family: 'Poppins', sans-serif;">₹ ${formatNumber(totals.subTotal)}</td>
+      </tr>
+      
+      <!-- CGST -->
+      <tr style="background-color: #F0F8E8; font-family: 'Poppins', sans-serif; height: 22px;">
+        <td colspan="5" style="border: 1px solid #001F3F; padding: 7px; text-align: right; font-weight: bold; font-size: 11px; color: #001F3F; font-family: 'Poppins', sans-serif;">CGST (${invoice.cgstPercentage || 0}%):</td>
+        <td style="border: 1px solid #001F3F; padding: 7px; font-weight: bold; font-size: 11px; text-align: right; color: #001F3F; font-family: 'Poppins', sans-serif;">₹ ${formatNumber(totals.cgstAmount)}</td>
+      </tr>
+      
+      <!-- SGST -->
+      <tr style="background-color: #F0F8E8; font-family: 'Poppins', sans-serif; height: 22px;">
+        <td colspan="5" style="border: 1px solid #001F3F; padding: 7px; text-align: right; font-weight: bold; font-size: 11px; color: #001F3F; font-family: 'Poppins', sans-serif;">SGST (${invoice.sgstPercentage || 0}%):</td>
+        <td style="border: 1px solid #001F3F; padding: 7px; font-weight: bold; font-size: 11px; text-align: right; color: #001F3F; font-family: 'Poppins', sans-serif;">₹ ${formatNumber(totals.sgstAmount)}</td>
+      </tr>
+      
+      <!-- Grand Total -->
+      <tr style="background-color: #001F3F; color: white; font-family: 'Poppins', sans-serif; height: 24px;">
+        <td colspan="5" style="border: 1px solid #001F3F; padding: 9px; text-align: right; font-weight: bold; font-size: 12px; font-family: 'Poppins', sans-serif;">GRAND TOTAL:</td>
+        <td style="border: 1px solid #001F3F; padding: 9px; font-weight: bold; font-size: 12px; text-align: right; font-family: 'Poppins', sans-serif;">₹ ${formatNumber(totals.total)}</td>
+      </tr>
+    `;
+  }
+
+  html += '</tbody></table>';
+
+  // Add footer for last page
+  if (page === pageCount - 1) {
+    html += `
+      <div style="margin-top: 15px; font-family: 'Poppins', sans-serif;">
+        <!-- Amount in words -->
+        <div style="border: 1.5px solid #001F3F; padding: 10px; font-size: 10px; background-color: #F5F7FA; border-radius: 4px 4px 0 0; color: #001F3F; min-height: 45px; font-family: 'Poppins', sans-serif; line-height: 1.4;">
+          <div style="font-family: 'Poppins', sans-serif;">
+            <strong>Amount Chargeable (in words):</strong> Indian Rupees ${numberToWords(totals.total).toUpperCase()}
           </div>
-          
-          <!-- Signature -->
-          <div style="border: 2px solid #001F3F; border-top: none; padding: 15px; text-align: center;">
-            <div style="margin-bottom: 80px;">
-              <strong style="font-size: 14px;">For ${invoice.companyName || "Company"}</strong>
-            </div>
-            <div style="font-size: 10px; color: #666;">
-              Authorized Signatory
-            </div>
-          </div>
-          
-          <!-- Footer Note -->
-          <div style="border: 2px solid #001F3F; border-top: none; padding: 8px; text-align: center; background-color: #001F3F; color: white; border-radius: 0 0 5px 5px; font-size: 10px;">
-            SUBJECT TO ${invoice.companyState?.toUpperCase() || "TAMIL NADU"} JURISDICTION | This is a Computer Generated Invoice
+          <div style="text-align: right; margin-top: 5px; font-weight: bold; color: #001F3F; font-size: 10px; font-family: 'Poppins', sans-serif;">
+            E. & O.E
           </div>
         </div>
-      `;
-    }
+        
+        <!-- Signature box -->
+        <div style="border: 1.5px solid #001F3F; border-top: none; border-bottom: none; padding: 12px; font-size: 10px; background-color: white; text-align: center; font-family: 'Poppins', sans-serif;">
+          <div style="color: #001F3F; margin-bottom: 50px; text-align: right; font-family: 'Poppins', sans-serif;">
+            <strong style="font-size: 11px; font-family: 'Poppins', sans-serif;">For ${invoice.companyName}</strong>
+          </div>
+          <div style="font-size: 9px; color: #666; margin-top: 12px; text-align: right; font-family: 'Poppins', sans-serif;">
+            Authorized Signatory
+          </div>
+        </div>
+        
+        <!-- Footer note -->
+        <div style="border: 1.5px solid #001F3F; border-top: none; padding: 8px; text-align: center; font-size: 9px; background-color: #001F3F; color: white; border-radius: 0 0 4px 4px; font-family: 'Poppins', sans-serif;">
+          SUBJECT TO ${(invoice.companyState || '').toUpperCase()} JURISDICTION | This is a Computer Generated Invoice
+        </div>
+      </div>
+    `;
+  }
 
-    html += `</div>`;
-    return html;
-  };
+  return html;
+};
+
+
 
   const calculateInvoiceTotals = (invoice) => {
     const subTotal = (invoice.materials || []).reduce(
@@ -683,9 +683,9 @@ const ViewInvoice = () => {
     return result.trim() + " Rupees Only";
   };
 
-  // Close PDF preview
-  const closePdfPreview = () => {
-    setShowPdfPreview(false);
+  // Close details modal
+  const closeDetailsModal = () => {
+    setShowDetailsModal(false);
     setSelectedInvoice(null);
   };
 
@@ -796,6 +796,7 @@ const ViewInvoice = () => {
             <table style={styles.table}>
               <thead>
                 <tr style={styles.tableHeaderRow}>
+                                    <th style={styles.tableHeader}>S.No</th>
                   <th style={styles.tableHeader}>Invoice No</th>
                   <th style={styles.tableHeader}>Date</th>
                   <th style={styles.tableHeader}>Client Name</th>
@@ -812,8 +813,11 @@ const ViewInvoice = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredInvoices.map((invoice) => (
+                  filteredInvoices.map((invoice,index) => (
                     <tr key={invoice.id} style={styles.tableRow}>
+                       <td style={styles.tableCell}>
+                        <strong>{index+1}.</strong>
+                      </td>
                       <td style={styles.tableCell}>
                         <strong>{invoice.invoiceNumber}</strong>
                       </td>
@@ -831,7 +835,18 @@ const ViewInvoice = () => {
                       </td>
                       <td style={styles.tableCell}>
                         <div style={styles.actionButtons}>
-                         
+                          <button
+                            onClick={() => handleViewDetails(invoice)}
+                            style={styles.viewButton}
+                          >
+                            View Details
+                          </button>
+                          <button
+                            onClick={() => handleEditInvoice(invoice)}
+                            style={styles.editButton}
+                          >
+                            Edit
+                          </button>
                           <button
                             onClick={() => handleDownloadPDF(invoice)}
                             style={styles.downloadButton}
@@ -861,25 +876,150 @@ const ViewInvoice = () => {
         </>
       )}
 
-      {/* PDF Preview Modal */}
-      {showPdfPreview && selectedInvoice && (
-        <div style={styles.modalOverlay} onClick={closePdfPreview}>
-          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+      {/* Invoice Details Modal */}
+      {showDetailsModal && selectedInvoice && (
+        <div style={styles.modalOverlay} onClick={closeDetailsModal}>
+          <div style={styles.detailsModalContent} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <h2 style={styles.modalTitle}>
-                PDF Preview - Invoice {selectedInvoice.invoiceNumber}
+                Invoice Details - {selectedInvoice.invoiceNumber}
               </h2>
-              <button onClick={closePdfPreview} style={styles.closeButton}>
+              <button onClick={closeDetailsModal} style={styles.closeButton}>
                 &times;
               </button>
             </div>
             <div style={styles.modalBody}>
-              <div id="pdf-preview-container" style={styles.pdfContainer}>
-                <div style={styles.loadingContainer}>
-                  <div style={styles.loadingSpinner}></div>
-                  <p>Generating PDF preview...</p>
+              <div style={styles.detailsContainer}>
+                {/* Invoice Info */}
+                <div style={styles.detailsSection}>
+                  <h3 style={styles.detailsSectionTitle}>Invoice Information</h3>
+                  <div style={styles.detailsGrid}>
+                    <div style={styles.detailItem}>
+                      <strong>Invoice Number:</strong> {selectedInvoice.invoiceNumber}
+                    </div>
+                    <div style={styles.detailItem}>
+                      <strong>Invoice Date:</strong> {formatDate(selectedInvoice.invoiceDate)}
+                    </div>
+                    <div style={styles.detailItem}>
+                      <strong>PO Number:</strong> {selectedInvoice.poNumber || "N/A"}
+                    </div>
+                    <div style={styles.detailItem}>
+                      <strong>Bill No:</strong> {selectedInvoice.BillNo || "N/A"}
+                    </div>
+                    <div style={styles.detailItem}>
+                      <strong>DC No:</strong> {selectedInvoice.DCNO || "N/A"}
+                    </div>
+                    <div style={styles.detailItem}>
+                      <strong>DC Date:</strong> {formatDate(selectedInvoice.DCDate)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Company Details */}
+                <div style={styles.detailsSection}>
+                  <h3 style={styles.detailsSectionTitle}>Company Details</h3>
+                  <div style={styles.detailsGrid}>
+                    <div style={styles.detailItem}>
+                      <strong>Company Name:</strong> {selectedInvoice.companyName || "N/A"}
+                    </div>
+                    <div style={styles.detailItem}>
+                      <strong>Company Address:</strong> {selectedInvoice.companyAddress || "N/A"}
+                    </div>
+                    <div style={styles.detailItem}>
+                      <strong>Company GSTIN:</strong> {selectedInvoice.companyGSTIN || "N/A"}
+                    </div>
+                    <div style={styles.detailItem}>
+                      <strong>Company Contact:</strong> {selectedInvoice.companyContact || "N/A"}
+                    </div>
+                    <div style={styles.detailItem}>
+                      <strong>Company Email:</strong> {selectedInvoice.companyemail || "N/A"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Client Details */}
+                <div style={styles.detailsSection}>
+                  <h3 style={styles.detailsSectionTitle}>Client Details</h3>
+                  <div style={styles.detailsGrid}>
+                    <div style={styles.detailItem}>
+                      <strong>Client Name:</strong> {selectedInvoice.clientName}
+                    </div>
+                    <div style={styles.detailItem}>
+                      <strong>Client Address:</strong> {selectedInvoice.clientAddress || "N/A"}
+                    </div>
+                    <div style={styles.detailItem}>
+                      <strong>Client GSTIN:</strong> {selectedInvoice.clientGSTIN || "N/A"}
+                    </div>
+                    <div style={styles.detailItem}>
+                      <strong>Client Contact:</strong> {selectedInvoice.clientContact || "N/A"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tax Details */}
+                <div style={styles.detailsSection}>
+                  <h3 style={styles.detailsSectionTitle}>Tax Details</h3>
+                  <div style={styles.detailsGrid}>
+                    <div style={styles.detailItem}>
+                      <strong>CGST %:</strong> {selectedInvoice.cgstPercentage || 0}%
+                    </div>
+                    <div style={styles.detailItem}>
+                      <strong>SGST %:</strong> {selectedInvoice.sgstPercentage || 0}%
+                    </div>
+                  </div>
+                </div>
+
+                {/* Materials Table */}
+                <div style={styles.detailsSection}>
+                  <h3 style={styles.detailsSectionTitle}>Materials ({selectedInvoice.materials?.length || 0} items)</h3>
+                  <div style={styles.materialsTableContainer}>
+                    <table style={styles.materialsTable}>
+                      <thead>
+                        <tr>
+                          <th style={styles.materialsTableHeader}>S.No.</th>
+                          <th style={styles.materialsTableHeader}>Description</th>
+                          <th style={styles.materialsTableHeader}>HSN/SAC</th>
+                          <th style={styles.materialsTableHeader}>Qty</th>
+                          <th style={styles.materialsTableHeader}>Rate (₹)</th>
+                          <th style={styles.materialsTableHeader}>Amount (₹)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedInvoice.materials?.map((material, index) => (
+                          <tr key={index}>
+                            <td style={styles.materialsTableCell}>{index + 1}</td>
+                            <td style={styles.materialsTableCell}>{material.description}</td>
+                            <td style={styles.materialsTableCell}>{material.hsn}</td>
+                            <td style={styles.materialsTableCell}>{material.quantity}</td>
+                            <td style={styles.materialsTableCell}>{formatNumber(material.rate)}</td>
+                            <td style={styles.materialsTableCell}>{formatNumber(material.amount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Totals */}
+                <div style={styles.detailsSection}>
+                  <h3 style={styles.detailsSectionTitle}>Totals</h3>
+                  <div style={styles.totalsContainer}>
+                    <div style={styles.totalItem}>
+                      <strong>Sub Total:</strong> {formatCurrency(calculateInvoiceTotals(selectedInvoice).subTotal)}
+                    </div>
+                    <div style={styles.totalItem}>
+                      <strong>CGST Amount:</strong> {formatCurrency(calculateInvoiceTotals(selectedInvoice).cgstAmount)}
+                    </div>
+                    <div style={styles.totalItem}>
+                      <strong>SGST Amount:</strong> {formatCurrency(calculateInvoiceTotals(selectedInvoice).sgstAmount)}
+                    </div>
+                    <div style={{...styles.totalItem, ...styles.grandTotal}}>
+                      <strong>Grand Total:</strong> {formatCurrency(calculateInvoiceTotals(selectedInvoice).total)}
+                    </div>
+                  </div>
                 </div>
               </div>
+              
               <div style={styles.modalActions}>
                 <button
                   onClick={() => handleDownloadPDF(selectedInvoice)}
@@ -894,7 +1034,7 @@ const ViewInvoice = () => {
                   Export to Excel
                 </button>
                 <button
-                  onClick={closePdfPreview}
+                  onClick={closeDetailsModal}
                   style={styles.cancelButton}
                 >
                   Close
@@ -1144,6 +1284,18 @@ const styles = {
     fontWeight: "500",
     whiteSpace: "nowrap",
   },
+  editButton: {
+    backgroundColor: "#FFC107",
+    color: "#FFFFFF",
+    border: "none",
+    padding: "6px 12px",
+    borderRadius: "4px",
+    fontSize: "0.8rem",
+    cursor: "pointer",
+    transition: "all 0.3s ease",
+    fontWeight: "500",
+    whiteSpace: "nowrap",
+  },
   downloadButton: {
     backgroundColor: "#4CAF50",
     color: "#FFFFFF",
@@ -1193,11 +1345,11 @@ const styles = {
     zIndex: 1000,
     padding: "10px",
   },
-  modalContent: {
+  detailsModalContent: {
     backgroundColor: "#FFFFFF",
     borderRadius: "8px",
     width: "95%",
-    maxWidth: "800px",
+    maxWidth: "900px",
     maxHeight: "90vh",
     overflow: "hidden",
     boxShadow: "0 4px 20px rgba(0, 0, 0, 0.25)",
@@ -1242,25 +1394,74 @@ const styles = {
     maxHeight: "calc(90vh - 70px)",
     overflow: "auto",
   },
-  pdfContainer: {
-    minHeight: "400px",
+  detailsContainer: {
     display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
     flexDirection: "column",
+    gap: "20px",
   },
-  confirmText: {
-    fontSize: "1rem",
+  detailsSection: {
+    backgroundColor: "#F8FAFF",
+    padding: "15px",
+    borderRadius: "6px",
+    border: "1px solid #E0E0E0",
+  },
+  detailsSectionTitle: {
     color: "#001F3F",
-    marginBottom: "10px",
-    lineHeight: "1.5",
+    fontSize: "1.1rem",
+    marginBottom: "15px",
+    fontWeight: "600",
   },
-  warningText: {
+  detailsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))",
+    gap: "10px",
+  },
+  detailItem: {
+    padding: "8px 0",
+    color: "#001F3F",
     fontSize: "0.9rem",
-    color: "#FF6B6B",
-    marginBottom: "20px",
-    lineHeight: "1.5",
-    fontStyle: "italic",
+    borderBottom: "1px solid #E0E0E0",
+  },
+  materialsTableContainer: {
+    overflowX: "auto",
+    marginTop: "10px",
+  },
+  materialsTable: {
+    width: "100%",
+    borderCollapse: "collapse",
+    fontSize: "0.85rem",
+  },
+  materialsTableHeader: {
+    backgroundColor: "#001F3F",
+    color: "#FFFFFF",
+    padding: "10px",
+    textAlign: "left",
+    border: "1px solid #001F3F",
+  },
+  materialsTableCell: {
+    padding: "8px 10px",
+    border: "1px solid #E0E0E0",
+    color: "#001F3F",
+  },
+  totalsContainer: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    maxWidth: "400px",
+  },
+  totalItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "10px",
+    backgroundColor: "#FFFFFF",
+    border: "1px solid #E0E0E0",
+    borderRadius: "4px",
+    color: "#001F3F",
+  },
+  grandTotal: {
+    backgroundColor: "#001F3F",
+    color: "#FFFFFF",
+    fontWeight: "bold",
   },
   modalActions: {
     display: "flex",
@@ -1291,6 +1492,19 @@ const styles = {
     cursor: "pointer",
     transition: "all 0.3s ease",
     fontWeight: "500",
+  },
+  confirmText: {
+    fontSize: "1rem",
+    color: "#001F3F",
+    marginBottom: "10px",
+    lineHeight: "1.5",
+  },
+  warningText: {
+    fontSize: "0.9rem",
+    color: "#FF6B6B",
+    marginBottom: "20px",
+    lineHeight: "1.5",
+    fontStyle: "italic",
   },
 };
 
