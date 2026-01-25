@@ -11,6 +11,9 @@ const ViewInvoice = () => {
   const [loading, setLoading] = useState(true);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [showPdfPreview, setShowPdfPreview] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [invoiceToDelete, setInvoiceToDelete] = useState(null);
+  const [notification, setNotification] = useState({ message: "", type: "", show: false });
   const [filters, setFilters] = useState({
     search: "",
     clientName: "",
@@ -38,11 +41,23 @@ const ViewInvoice = () => {
       
       setInvoices(invoicesList);
       setFilteredInvoices(invoicesList);
+      showNotification("Invoices loaded successfully!", "success");
     } catch (error) {
       console.error("Error fetching invoices:", error);
+      showNotification("Failed to load invoices", "error");
     } finally {
       setLoading(false);
     }
+  };
+
+  // Custom notification function
+  const showNotification = (message, type = "info") => {
+    setNotification({ message, type, show: true });
+    
+    // Auto-hide after 3 seconds
+    setTimeout(() => {
+      setNotification({ message: "", type: "", show: false });
+    }, 3000);
   };
 
   // Apply filters
@@ -102,21 +117,39 @@ const ViewInvoice = () => {
       fromDate: "",
       toDate: "",
     });
+    showNotification("Filters cleared", "info");
   };
 
   // Get unique client names for filter dropdown
   const clientNames = [...new Set(invoices.map(invoice => invoice.clientName))].sort();
 
+  // Delete invoice confirmation
+  const confirmDeleteInvoice = (invoice) => {
+    setInvoiceToDelete(invoice);
+    setShowDeleteConfirm(true);
+  };
+
   // Delete invoice
-  const handleDeleteInvoice = async (id) => {
-    if (window.confirm("Are you sure you want to delete this invoice?")) {
-      try {
-        await deleteDoc(doc(db, "invoices", id));
-        fetchInvoices(); // Refresh the list
-      } catch (error) {
-        console.error("Error deleting invoice:", error);
-      }
+  const handleDeleteInvoice = async () => {
+    if (!invoiceToDelete) return;
+
+    try {
+      await deleteDoc(doc(db, "invoices", invoiceToDelete.id));
+      showNotification(`Invoice ${invoiceToDelete.invoiceNumber} deleted successfully!`, "success");
+      fetchInvoices(); // Refresh the list
+    } catch (error) {
+      console.error("Error deleting invoice:", error);
+      showNotification("Failed to delete invoice", "error");
+    } finally {
+      setShowDeleteConfirm(false);
+      setInvoiceToDelete(null);
     }
+  };
+
+  // Cancel delete
+  const cancelDelete = () => {
+    setShowDeleteConfirm(false);
+    setInvoiceToDelete(null);
   };
 
   // Format date
@@ -136,193 +169,196 @@ const ViewInvoice = () => {
     }).format(amount || 0);
   };
 
+  // Format number for display
+  const formatNumber = (num) => {
+    return new Intl.NumberFormat("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(num || 0);
+  };
+
   // Export to Excel
   const exportToExcel = () => {
-    // Prepare data for Excel
-    const excelData = filteredInvoices.map(invoice => {
-      const totals = invoice.totals || calculateInvoiceTotals(invoice);
-      return {
-        "Invoice No": invoice.invoiceNumber,
-        "Date": formatDate(invoice.invoiceDate || invoice.timestamp),
-        "Client Name": invoice.clientName,
-        "Client GSTIN": invoice.clientGSTIN || "N/A",
-        "Company Name": invoice.companyName || "N/A",
-        "Total Items": invoice.materials?.length || 0,
-        "Sub Total": totals.subTotal || 0,
-        "CGST Amount": totals.cgstAmount || 0,
-        "SGST Amount": totals.sgstAmount || 0,
-        "Grand Total": totals.total || 0,
-        "PO Number": invoice.poNumber || "N/A",
-        "Bill No": invoice.BillNo || "N/A",
-        "DC No": invoice.DCNO || "N/A",
-        "Created Date": formatDate(invoice.timestamp),
-      };
-    });
+    try {
+      if (filteredInvoices.length === 0) {
+        showNotification("No invoices to export", "warning");
+        return;
+      }
 
-    // Create worksheet
-    const worksheet = XLSX.utils.json_to_sheet(excelData);
-    
-    // Create workbook
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Invoices");
-    
-    // Set column widths
-    const colWidths = [
-      { wch: 15 }, // Invoice No
-      { wch: 12 }, // Date
-      { wch: 25 }, // Client Name
-      { wch: 20 }, // Client GSTIN
-      { wch: 30 }, // Company Name
-      { wch: 12 }, // Total Items
-      { wch: 15 }, // Sub Total
-      { wch: 15 }, // CGST Amount
-      { wch: 15 }, // SGST Amount
-      { wch: 15 }, // Grand Total
-      { wch: 15 }, // PO Number
-      { wch: 12 }, // Bill No
-      { wch: 12 }, // DC No
-      { wch: 12 }, // Created Date
-    ];
-    worksheet['!cols'] = colWidths;
+      // Prepare data for Excel
+      const excelData = filteredInvoices.map(invoice => {
+        const totals = invoice.totals || calculateInvoiceTotals(invoice);
+        return {
+          "Invoice No": invoice.invoiceNumber,
+          "Date": formatDate(invoice.invoiceDate || invoice.timestamp),
+          "Client Name": invoice.clientName,
+          "Client GSTIN": invoice.clientGSTIN || "N/A",
+          "Company Name": invoice.companyName || "N/A",
+          "Total Items": invoice.materials?.length || 0,
+          "Sub Total": totals.subTotal || 0,
+          "CGST Amount": totals.cgstAmount || 0,
+          "SGST Amount": totals.sgstAmount || 0,
+          "Grand Total": totals.total || 0,
+          "PO Number": invoice.poNumber || "N/A",
+          "Bill No": invoice.BillNo || "N/A",
+          "DC No": invoice.DCNO || "N/A",
+          "Created Date": formatDate(invoice.timestamp),
+        };
+      });
 
-    // Generate Excel file
-    const fileName = `Invoices_${new Date().toISOString().split('T')[0]}.xlsx`;
-    XLSX.writeFile(workbook, fileName);
+      // Create worksheet
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      
+      // Create workbook
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Invoices");
+      
+      // Set column widths
+      const colWidths = [
+        { wch: 15 }, // Invoice No
+        { wch: 12 }, // Date
+        { wch: 25 }, // Client Name
+        { wch: 20 }, // Client GSTIN
+        { wch: 30 }, // Company Name
+        { wch: 12 }, // Total Items
+        { wch: 15 }, // Sub Total
+        { wch: 15 }, // CGST Amount
+        { wch: 15 }, // SGST Amount
+        { wch: 15 }, // Grand Total
+        { wch: 15 }, // PO Number
+        { wch: 12 }, // Bill No
+        { wch: 12 }, // DC No
+        { wch: 12 }, // Created Date
+      ];
+      worksheet['!cols'] = colWidths;
+
+      // Generate Excel file
+      const fileName = `Invoices_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+      showNotification(`Exported ${filteredInvoices.length} invoices to Excel`, "success");
+    } catch (error) {
+      console.error("Error exporting to Excel:", error);
+      showNotification("Failed to export to Excel", "error");
+    }
   };
 
   // Export specific invoice details to Excel
   const exportInvoiceDetailsToExcel = (invoice) => {
-    const invoiceData = [{
-      "Invoice No": invoice.invoiceNumber,
-      "Invoice Date": formatDate(invoice.invoiceDate || invoice.timestamp),
-      "Client Name": invoice.clientName,
-      "Client Address": invoice.clientAddress || "N/A",
-      "Client GSTIN": invoice.clientGSTIN || "N/A",
-      "Client Contact": invoice.clientContact || "N/A",
-      "Company Name": invoice.companyName || "N/A",
-      "Company Address": invoice.companyAddress || "N/A",
-      "Company GSTIN": invoice.companyGSTIN || "N/A",
-      "Company Contact": invoice.companyContact || "N/A",
-      "PO Number": invoice.poNumber || "N/A",
-      "Bill No": invoice.BillNo || "N/A",
-      "DC No": invoice.DCNO || "N/A",
-      "DC Date": formatDate(invoice.DCDate),
-      "CGST %": invoice.cgstPercentage || 0,
-      "SGST %": invoice.sgstPercentage || 0,
-    }];
+    try {
+      const invoiceData = [{
+        "Invoice No": invoice.invoiceNumber,
+        "Invoice Date": formatDate(invoice.invoiceDate || invoice.timestamp),
+        "Client Name": invoice.clientName,
+        "Client Address": invoice.clientAddress || "N/A",
+        "Client GSTIN": invoice.clientGSTIN || "N/A",
+        "Client Contact": invoice.clientContact || "N/A",
+        "Company Name": invoice.companyName || "N/A",
+        "Company Address": invoice.companyAddress || "N/A",
+        "Company GSTIN": invoice.companyGSTIN || "N/A",
+        "Company Contact": invoice.companyContact || "N/A",
+        "PO Number": invoice.poNumber || "N/A",
+        "Bill No": invoice.BillNo || "N/A",
+        "DC No": invoice.DCNO || "N/A",
+        "DC Date": formatDate(invoice.DCDate),
+        "CGST %": invoice.cgstPercentage || 0,
+        "SGST %": invoice.sgstPercentage || 0,
+      }];
 
-    // Create materials data
-    const materialsData = (invoice.materials || []).map((material, index) => ({
-      "S.No.": index + 1,
-      "Material Description": material.description,
-      "HSN/SAC": material.hsn,
-      "Quantity": material.quantity,
-      "Rate": material.rate,
-      "Amount": material.amount,
-    }));
+      // Create materials data
+      const materialsData = (invoice.materials || []).map((material, index) => ({
+        "S.No.": index + 1,
+        "Material Description": material.description,
+        "HSN/SAC": material.hsn,
+        "Quantity": material.quantity,
+        "Rate": material.rate,
+        "Amount": material.amount,
+      }));
 
-    const totals = invoice.totals || calculateInvoiceTotals(invoice);
-    const totalsData = [{
-      "Sub Total": totals.subTotal,
-      "CGST Amount": totals.cgstAmount,
-      "SGST Amount": totals.sgstAmount,
-      "Grand Total": totals.total,
-    }];
+      const totals = invoice.totals || calculateInvoiceTotals(invoice);
+      const totalsData = [{
+        "Sub Total": totals.subTotal,
+        "CGST Amount": totals.cgstAmount,
+        "SGST Amount": totals.sgstAmount,
+        "Grand Total": totals.total,
+      }];
 
-    // Create workbook with multiple sheets
-    const workbook = XLSX.utils.book_new();
-    
-    // Invoice details sheet
-    const invoiceSheet = XLSX.utils.json_to_sheet(invoiceData);
-    XLSX.utils.book_append_sheet(workbook, invoiceSheet, "Invoice Details");
-    
-    // Materials sheet
-    const materialsSheet = XLSX.utils.json_to_sheet(materialsData);
-    XLSX.utils.book_append_sheet(workbook, materialsSheet, "Materials");
-    
-    // Totals sheet
-    const totalsSheet = XLSX.utils.json_to_sheet(totalsData);
-    XLSX.utils.book_append_sheet(workbook, totalsSheet, "Totals");
+      // Create workbook with multiple sheets
+      const workbook = XLSX.utils.book_new();
+      
+      // Invoice details sheet
+      const invoiceSheet = XLSX.utils.json_to_sheet(invoiceData);
+      XLSX.utils.book_append_sheet(workbook, invoiceSheet, "Invoice Details");
+      
+      // Materials sheet
+      const materialsSheet = XLSX.utils.json_to_sheet(materialsData);
+      XLSX.utils.book_append_sheet(workbook, materialsSheet, "Materials");
+      
+      // Totals sheet
+      const totalsSheet = XLSX.utils.json_to_sheet(totalsData);
+      XLSX.utils.book_append_sheet(workbook, totalsSheet, "Totals");
 
-    // Set column widths
-    invoiceSheet['!cols'] = [
-      { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 30 }, 
-      { wch: 20 }, { wch: 15 }, { wch: 30 }, { wch: 40 }, 
-      { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, 
-      { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }
-    ];
+      // Set column widths
+      invoiceSheet['!cols'] = [
+        { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 30 }, 
+        { wch: 20 }, { wch: 15 }, { wch: 30 }, { wch: 40 }, 
+        { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, 
+        { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }
+      ];
 
-    materialsSheet['!cols'] = [
-      { wch: 8 }, { wch: 40 }, { wch: 15 }, 
-      { wch: 12 }, { wch: 15 }, { wch: 15 }
-    ];
+      materialsSheet['!cols'] = [
+        { wch: 8 }, { wch: 40 }, { wch: 15 }, 
+        { wch: 12 }, { wch: 15 }, { wch: 15 }
+      ];
 
-    totalsSheet['!cols'] = [
-      { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }
-    ];
+      totalsSheet['!cols'] = [
+        { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }
+      ];
 
-    const fileName = `Invoice_${invoice.invoiceNumber}_Details.xlsx`;
-    XLSX.writeFile(workbook, fileName);
+      const fileName = `Invoice_${invoice.invoiceNumber}_Details.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+      showNotification(`Exported invoice ${invoice.invoiceNumber} details to Excel`, "success");
+    } catch (error) {
+      console.error("Error exporting invoice details:", error);
+      showNotification("Failed to export invoice details", "error");
+    }
   };
 
-  // View/Preview PDF (Fixed version)
+  // View/Preview PDF
   const handleViewPDF = async (invoice) => {
-    setSelectedInvoice(invoice);
-    setShowPdfPreview(true);
-    
-    // Generate and display PDF
-    await generateAndDisplayPDF(invoice);
+    try {
+      setSelectedInvoice(invoice);
+      setShowPdfPreview(true);
+      
+      // Clear previous preview
+      const container = document.getElementById("pdf-preview-container");
+      if (container) {
+        container.innerHTML = '<div style="text-align: center; padding: 40px;"><p>Generating PDF preview...</p></div>';
+      }
+      
+      // Generate and display PDF
+      await generateAndDisplayPDF(invoice);
+      showNotification(`PDF preview ready for invoice ${invoice.invoiceNumber}`, "info");
+    } catch (error) {
+      console.error("Error in handleViewPDF:", error);
+      showNotification("Failed to generate PDF preview", "error");
+    }
   };
 
-  // Download PDF (Fixed version)
+  // Download PDF
   const handleDownloadPDF = async (invoice) => {
-    await generateAndDownloadPDF(invoice);
+    try {
+      showNotification(`Generating PDF for invoice ${invoice.invoiceNumber}...`, "info");
+      await generateAndDownloadPDF(invoice);
+    } catch (error) {
+      console.error("Error in handleDownloadPDF:", error);
+      showNotification("Failed to generate PDF", "error");
+    }
   };
 
   const generateAndDisplayPDF = async (invoice) => {
     try {
-      // Create a temporary container for PDF generation
-      const tempContainer = document.createElement("div");
-      tempContainer.style.position = "absolute";
-      tempContainer.style.left = "-9999px";
-      tempContainer.style.top = "0";
-      tempContainer.style.width = "794px"; // A4 width in pixels
-      tempContainer.style.height = "1123px"; // A4 height in pixels
-      tempContainer.style.backgroundColor = "white";
-      tempContainer.style.padding = "20px";
-      tempContainer.style.boxSizing = "border-box";
-      document.body.appendChild(tempContainer);
-
-      // Generate PDF content
-      const pdfContent = generatePdfContent(invoice);
-      tempContainer.innerHTML = pdfContent;
-
-      // Wait for images to load
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Create canvas from the container
-      const canvas = await html2canvas(tempContainer, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-      });
-
-      // Remove temporary container
-      document.body.removeChild(tempContainer);
-
-      // Create PDF
-      const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: "a4",
-      });
-
-      const imgData = canvas.toDataURL("image/png");
-      const imgWidth = 190; // mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-      pdf.addImage(imgData, "PNG", 10, 10, imgWidth, imgHeight);
+      // Create PDF with proper structure (8 rows per page)
+      const pdf = await generatePDFDocument(invoice);
       
       // Display in preview container
       const pdfData = pdf.output("datauristring");
@@ -333,8 +369,9 @@ const ViewInvoice = () => {
             src="${pdfData}" 
             type="application/pdf" 
             width="100%" 
-            height="600px" 
+            height="580px" 
             style="border: 2px solid #001F3F; border-radius: 8px;"
+            title="PDF Preview"
           />
         `;
       }
@@ -342,79 +379,111 @@ const ViewInvoice = () => {
       console.error("Error generating PDF:", error);
       const container = document.getElementById("pdf-preview-container");
       if (container) {
-        container.innerHTML = `<p style="color: red;">Error generating PDF: ${error.message}</p>`;
+        container.innerHTML = `<div style="color: red; text-align: center; padding: 40px;"><p>Error generating PDF: ${error.message}</p></div>`;
       }
+      throw error;
     }
   };
 
   const generateAndDownloadPDF = async (invoice) => {
     try {
-      // Create a temporary container for PDF generation
-      const tempContainer = document.createElement("div");
-      tempContainer.style.position = "absolute";
-      tempContainer.style.left = "-9999px";
-      tempContainer.style.top = "0";
-      tempContainer.style.width = "794px"; // A4 width in pixels
-      tempContainer.style.height = "1123px"; // A4 height in pixels
-      tempContainer.style.backgroundColor = "white";
-      tempContainer.style.padding = "20px";
-      tempContainer.style.boxSizing = "border-box";
-      document.body.appendChild(tempContainer);
-
-      // Generate PDF content
-      const pdfContent = generatePdfContent(invoice);
-      tempContainer.innerHTML = pdfContent;
-
-      // Wait for images to load
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Create canvas from the container
-      const canvas = await html2canvas(tempContainer, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-      });
-
-      // Remove temporary container
-      document.body.removeChild(tempContainer);
-
-      // Create PDF
-      const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: "a4",
-      });
-
-      const imgData = canvas.toDataURL("image/png");
-      const imgWidth = 190; // mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-      pdf.addImage(imgData, "PNG", 10, 10, imgWidth, imgHeight);
+      const pdf = await generatePDFDocument(invoice);
       
       // Save the PDF
       const fileName = `Invoice_${invoice.invoiceNumber}_${new Date(invoice.invoiceDate || invoice.timestamp).toISOString().split("T")[0]}.pdf`;
       pdf.save(fileName);
+      showNotification(`PDF downloaded: ${fileName}`, "success");
     } catch (error) {
       console.error("Error generating PDF:", error);
-      alert(`Error generating PDF: ${error.message}`);
+      throw error;
     }
   };
 
-  // Generate PDF content as HTML string
-  const generatePdfContent = (invoice) => {
-    const totals = invoice.totals || calculateInvoiceTotals(invoice);
+  const generatePDFDocument = async (invoice) => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const materials = invoice.materials || [];
+        const totals = invoice.totals || calculateInvoiceTotals(invoice);
+        const materialsPerPage = 8;
+        const pageCount = Math.ceil(materials.length / materialsPerPage);
+        
+        const pdf = new jsPDF({
+          orientation: "portrait",
+          unit: "mm",
+          format: "a4",
+        });
+
+        // Generate each page
+        for (let page = 0; page < pageCount; page++) {
+          if (page > 0) {
+            pdf.addPage();
+          }
+
+          // Create a simple HTML string for the page
+          const pageHTML = generatePageHTML(invoice, page, materialsPerPage, pageCount, totals);
+          
+          // Create temporary container
+          const tempContainer = document.createElement("div");
+          tempContainer.style.position = "fixed";
+          tempContainer.style.left = "-10000px";
+          tempContainer.style.top = "0";
+          tempContainer.style.width = "210mm";
+          tempContainer.style.height = "297mm";
+          tempContainer.style.backgroundColor = "white";
+          tempContainer.style.padding = "10mm 15mm";
+          tempContainer.style.boxSizing = "border-box";
+          
+          tempContainer.innerHTML = pageHTML;
+          document.body.appendChild(tempContainer);
+
+          // Wait for images to load
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+          // Convert to canvas
+          const canvas = await html2canvas(tempContainer, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: "#ffffff",
+            logging: false,
+          });
+
+          // Remove temporary container
+          document.body.removeChild(tempContainer);
+
+          // Add image to PDF
+          const imgData = canvas.toDataURL("image/png");
+          const imgWidth = 190; // mm
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+          pdf.addImage(imgData, "PNG", 10, 10, imgWidth, imgHeight);
+        }
+
+        resolve(pdf);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  };
+
+  const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) => {
     const materials = invoice.materials || [];
+    const startIdx = page * materialsPerPage;
+    const endIdx = Math.min(startIdx + materialsPerPage, materials.length);
     
-    return `
-      <div style="font-family: Arial, sans-serif; color: #001F3F; padding: 20px;">
+    let html = `
+      <div style="font-family: 'Arial', sans-serif; color: #001F3F; width: 100%;">
+    `;
+
+    // Header (only on first page)
+    if (page === 0) {
+      html += `
         <!-- Header -->
         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 2px solid #001F3F; padding-bottom: 15px;">
           <!-- Left side - Logo -->
           <div style="flex: 1;">
-            <img src="https://template.canva.com/EAE1YAgPM_U/1/0/400w-R-Meu_EcnME.jpg" 
-                 alt="Company Logo" 
-                 style="height: 80px; display: block;">
+            <div style="height: 80px; display: block; color: #001F3F; font-weight: bold; font-size: 18px;">
+              [COMPANY LOGO]
+            </div>
           </div>
           
           <!-- Right side - Invoice details -->
@@ -437,7 +506,7 @@ const ViewInvoice = () => {
           <div style="flex: 1;">
             <h3 style="margin: 0 0 10px 0; font-size: 16px; color: #001F3F;">From:</h3>
             <div>
-              <div><strong>${invoice.companyName}</strong></div>
+              <div><strong>${invoice.companyName || "N/A"}</strong></div>
               <div>${invoice.companyAddress || ""}</div>
               <div><strong>Email:</strong> ${invoice.companyemail || ""}</div>
               <div><strong>GSTIN:</strong> ${invoice.companyGSTIN || ""}</div>
@@ -457,34 +526,63 @@ const ViewInvoice = () => {
             </div>
           </div>
         </div>
+      `;
+    }
 
-        <!-- Materials Table -->
-        <table style="width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px;">
-          <thead>
-            <tr style="background-color: #001F3F; color: white;">
-              <th style="border: 1px solid #001F3F; padding: 8px; text-align: center;">S.No.</th>
-              <th style="border: 1px solid #001F3F; padding: 8px;">Material Description</th>
-              <th style="border: 1px solid #001F3F; padding: 8px; text-align: center;">HSN/SAC</th>
-              <th style="border: 1px solid #001F3F; padding: 8px; text-align: center;">Qty.</th>
-              <th style="border: 1px solid #001F3F; padding: 8px; text-align: right;">Rate (₹)</th>
-              <th style="border: 1px solid #001F3F; padding: 8px; text-align: right;">Amount (₹)</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${materials.map((material, index) => `
-              <tr style="${index % 2 === 0 ? 'background-color: #F5F7FA;' : ''}">
-                <td style="border: 1px solid #001F3F; padding: 8px; text-align: center;">${index + 1}</td>
-                <td style="border: 1px solid #001F3F; padding: 8px;">${material.description}</td>
-                <td style="border: 1px solid #001F3F; padding: 8px; text-align: center;">${material.hsn}</td>
-                <td style="border: 1px solid #001F3F; padding: 8px; text-align: center;">${material.quantity}</td>
-                <td style="border: 1px solid #001F3F; padding: 8px; text-align: right;">${formatNumber(material.rate)}</td>
-                <td style="border: 1px solid #001F3F; padding: 8px; text-align: right; font-weight: bold;">${formatNumber(material.amount)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
+    // Materials Table
+    html += `
+      <table style="width: 100%; border-collapse: collapse; margin-top: ${page === 0 ? '20px' : '10px'}; font-size: 11px; table-layout: fixed;">
+        <thead>
+          <tr style="background-color: #001F3F; color: white;">
+            <th style="border: 1px solid #001F3F; padding: 8px; text-align: center; width: 5%;">S.No.</th>
+            <th style="border: 1px solid #001F3F; padding: 8px; width: 45%;">Material Description</th>
+            <th style="border: 1px solid #001F3F; padding: 8px; text-align: center; width: 15%;">HSN/SAC</th>
+            <th style="border: 1px solid #001F3F; padding: 8px; text-align: center; width: 10%;">Qty.</th>
+            <th style="border: 1px solid #001F3F; padding: 8px; text-align: right; width: 15%;">Rate (₹)</th>
+            <th style="border: 1px solid #001F3F; padding: 8px; text-align: right; width: 20%;">Amount (₹)</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
 
-        <!-- Totals -->
+    // Add material rows
+    for (let i = startIdx; i < endIdx; i++) {
+      const material = materials[i];
+      html += `
+        <tr style="${i % 2 === 0 ? 'background-color: #F5F7FA;' : ''}">
+          <td style="border: 1px solid #001F3F; padding: 8px; text-align: center;">${i + 1}</td>
+          <td style="border: 1px solid #001F3F; padding: 8px;">${material.description}</td>
+          <td style="border: 1px solid #001F3F; padding: 8px; text-align: center;">${material.hsn}</td>
+          <td style="border: 1px solid #001F3F; padding: 8px; text-align: center;">${material.quantity}</td>
+          <td style="border: 1px solid #001F3F; padding: 8px; text-align: right;">${formatNumber(material.rate)}</td>
+          <td style="border: 1px solid #001F3F; padding: 8px; text-align: right; font-weight: bold;">${formatNumber(material.amount)}</td>
+        </tr>
+      `;
+    }
+
+    // Add empty rows if needed
+    const emptyRows = materialsPerPage - (endIdx - startIdx);
+    for (let i = 0; i < emptyRows; i++) {
+      html += `
+        <tr style="height: 30px;">
+          <td style="border: 1px solid #001F3F; padding: 8px;">${endIdx + i + 1}</td>
+          <td style="border: 1px solid #001F3F; padding: 8px;"></td>
+          <td style="border: 1px solid #001F3F; padding: 8px;"></td>
+          <td style="border: 1px solid #001F3F; padding: 8px;"></td>
+          <td style="border: 1px solid #001F3F; padding: 8px;"></td>
+          <td style="border: 1px solid #001F3F; padding: 8px;"></td>
+        </tr>
+      `;
+    }
+
+    html += `
+        </tbody>
+      </table>
+    `;
+
+    // Totals (only on last page)
+    if (page === pageCount - 1) {
+      html += `
         <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px;">
           <tr style="background-color: #E8F4F8;">
             <td colspan="5" style="border: 1px solid #001F3F; padding: 10px; text-align: right; font-weight: bold;">Sub Total:</td>
@@ -515,7 +613,7 @@ const ViewInvoice = () => {
           <!-- Signature -->
           <div style="border: 2px solid #001F3F; border-top: none; padding: 15px; text-align: center;">
             <div style="margin-bottom: 80px;">
-              <strong style="font-size: 14px;">For ${invoice.companyName}</strong>
+              <strong style="font-size: 14px;">For ${invoice.companyName || "Company"}</strong>
             </div>
             <div style="font-size: 10px; color: #666;">
               Authorized Signatory
@@ -527,16 +625,11 @@ const ViewInvoice = () => {
             SUBJECT TO ${invoice.companyState?.toUpperCase() || "TAMIL NADU"} JURISDICTION | This is a Computer Generated Invoice
           </div>
         </div>
-      </div>
-    `;
-  };
+      `;
+    }
 
-  // Helper functions
-  const formatNumber = (num) => {
-    return new Intl.NumberFormat("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(num || 0);
+    html += `</div>`;
+    return html;
   };
 
   const calculateInvoiceTotals = (invoice) => {
@@ -598,14 +691,30 @@ const ViewInvoice = () => {
 
   return (
     <div style={styles.container}>
-        <div style={styles.header}>
-      <h1 style={styles.title}>View Invoices</h1>
-
-       <button onClick={exportToExcel} style={styles.exportButton}>
-            Export All to Excel
-        </button>
+      {/* Notification Banner */}
+      {notification.show && (
+        <div style={{
+          ...styles.notification,
+          backgroundColor: notification.type === 'success' ? '#4CAF50' : 
+                         notification.type === 'error' ? '#FF6B6B' : 
+                         notification.type === 'warning' ? '#FF9800' : '#2196F3'
+        }}>
+          <span style={styles.notificationText}>{notification.message}</span>
+          <button 
+            onClick={() => setNotification({ message: "", type: "", show: false })}
+            style={styles.notificationClose}
+          >
+            &times;
+          </button>
         </div>
+      )}
 
+      <div style={styles.header}>
+        <h1 style={styles.title}>View Invoices</h1>
+        <button onClick={exportToExcel} style={styles.exportButton}>
+          Export All to Excel
+        </button>
+      </div>
 
       {/* Filters Section */}
       <div style={styles.filtersSection}>
@@ -665,9 +774,7 @@ const ViewInvoice = () => {
             <button onClick={clearFilters} style={styles.clearButton}>
               Clear Filters
             </button>
-            
           </div>
-          
         </div>
       </div>
 
@@ -724,12 +831,7 @@ const ViewInvoice = () => {
                       </td>
                       <td style={styles.tableCell}>
                         <div style={styles.actionButtons}>
-                          <button
-                            onClick={() => handleViewPDF(invoice)}
-                            style={styles.viewButton}
-                          >
-                            View PDF
-                          </button>
+                         
                           <button
                             onClick={() => handleDownloadPDF(invoice)}
                             style={styles.downloadButton}
@@ -743,7 +845,7 @@ const ViewInvoice = () => {
                             Export Excel
                           </button>
                           <button
-                            onClick={() => handleDeleteInvoice(invoice.id)}
+                            onClick={() => confirmDeleteInvoice(invoice)}
                             style={styles.deleteButton}
                           >
                             Delete
@@ -761,8 +863,8 @@ const ViewInvoice = () => {
 
       {/* PDF Preview Modal */}
       {showPdfPreview && selectedInvoice && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalContent}>
+        <div style={styles.modalOverlay} onClick={closePdfPreview}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <h2 style={styles.modalTitle}>
                 PDF Preview - Invoice {selectedInvoice.invoiceNumber}
@@ -773,7 +875,10 @@ const ViewInvoice = () => {
             </div>
             <div style={styles.modalBody}>
               <div id="pdf-preview-container" style={styles.pdfContainer}>
-                <p>Generating PDF preview...</p>
+                <div style={styles.loadingContainer}>
+                  <div style={styles.loadingSpinner}></div>
+                  <p>Generating PDF preview...</p>
+                </div>
               </div>
               <div style={styles.modalActions}>
                 <button
@@ -799,6 +904,43 @@ const ViewInvoice = () => {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && invoiceToDelete && (
+        <div style={styles.modalOverlay} onClick={cancelDelete}>
+          <div style={styles.confirmModalContent} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>Confirm Delete</h2>
+              <button onClick={cancelDelete} style={styles.closeButton}>
+                &times;
+              </button>
+            </div>
+            <div style={styles.modalBody}>
+              <p style={styles.confirmText}>
+                Are you sure you want to delete invoice <strong>{invoiceToDelete.invoiceNumber}</strong> 
+                for client <strong>{invoiceToDelete.clientName}</strong>?
+              </p>
+              <p style={styles.warningText}>
+                This action cannot be undone. All data related to this invoice will be permanently deleted.
+              </p>
+              <div style={styles.modalActions}>
+                <button
+                  onClick={handleDeleteInvoice}
+                  style={styles.deleteConfirmButton}
+                >
+                  Yes, Delete Invoice
+                </button>
+                <button
+                  onClick={cancelDelete}
+                  style={styles.cancelButton}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -811,58 +953,81 @@ const styles = {
     padding: "20px",
     fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
     color: "#001F3F",
+    position: "relative",
   },
-  header:{
-display: "flex",
-justifyContent: "space-between",
+  notification: {
+    position: "fixed",
+    top: "20px",
+    right: "20px",
+    padding: "15px 20px",
+    borderRadius: "8px",
+    color: "white",
+    zIndex: 1001,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minWidth: "300px",
+    maxWidth: "500px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    animation: "slideIn 0.3s ease",
+  },
+  notificationText: {
+    flex: 1,
+    marginRight: "10px",
+  },
+  notificationClose: {
+    background: "none",
+    border: "none",
+    color: "white",
+    fontSize: "20px",
+    cursor: "pointer",
+    padding: "0",
+    width: "24px",
+    height: "24px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "20px",
   },
   title: {
     color: "#001F3F",
-    marginBottom: "10px",
-    fontSize: "2.5rem",
+    margin: 0,
+    fontSize: "2rem",
     fontWeight: "600",
-  },
-  exportSection: {
-    backgroundColor: "#E8F5E9",
-    padding: "12px",
-    borderRadius: "8px",
-    border: "2px solid #4CAF50",
-    marginBottom: "20px",
-    textAlign: "center",
   },
   exportButton: {
     backgroundColor: "#4CAF50",
     color: "#FFFFFF",
     border: "none",
-    padding: "8px 18px",
+    padding: "10px 20px",
     borderRadius: "6px",
-    fontSize: "15px",
+    fontSize: "16px",
     fontWeight: "600",
     cursor: "pointer",
     transition: "all 0.3s ease",
-    marginBottom: "10px",
-  },
-  exportNote: {
-    color: "#2E7D32",
-    fontSize: "0.9rem",
-    fontStyle: "italic",
+    boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
   },
   filtersSection: {
     backgroundColor: "#F8FAFF",
-    padding: "25px",
+    padding: "20px",
     borderRadius: "8px",
-    marginBottom: "30px",
+    marginBottom: "20px",
   },
   sectionTitle: {
     color: "#001F3F",
-    fontSize: "1.5rem",
-    marginBottom: "20px",
+    fontSize: "1.2rem",
+    marginBottom: "15px",
     fontWeight: "600",
   },
   filterGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
-    gap: "20px",
+    gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+    gap: "15px",
     alignItems: "end",
   },
   filterGroup: {
@@ -870,17 +1035,17 @@ justifyContent: "space-between",
   },
   filterLabel: {
     display: "block",
-    marginBottom: "8px",
+    marginBottom: "5px",
     color: "#001F3F",
-    fontSize: "1rem",
+    fontSize: "0.9rem",
     fontWeight: "500",
   },
   filterInput: {
     width: "100%",
-    padding: "10px 12px",
+    padding: "8px 10px",
     border: "2px solid #001F3F",
-    borderRadius: "6px",
-    fontSize: "1rem",
+    borderRadius: "4px",
+    fontSize: "0.9rem",
     backgroundColor: "#FFFFFF",
     color: "#001F3F",
     boxSizing: "border-box",
@@ -889,9 +1054,9 @@ justifyContent: "space-between",
     backgroundColor: "#FF6B6B",
     color: "#FFFFFF",
     border: "none",
-    padding: "10px 20px",
-    borderRadius: "6px",
-    fontSize: "1rem",
+    padding: "8px 15px",
+    borderRadius: "4px",
+    fontSize: "0.9rem",
     cursor: "pointer",
     transition: "all 0.3s ease",
     fontWeight: "500",
@@ -899,9 +1064,9 @@ justifyContent: "space-between",
   },
   resultsCount: {
     backgroundColor: "#F0F8FF",
-    padding: "10px 15px",
-    borderRadius: "6px",
-    marginBottom: "20px",
+    padding: "8px 12px",
+    borderRadius: "4px",
+    marginBottom: "15px",
     borderLeft: "4px solid #001F3F",
   },
   loadingContainer: {
@@ -909,7 +1074,7 @@ justifyContent: "space-between",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    padding: "60px",
+    padding: "40px",
   },
   loadingSpinner: {
     border: "4px solid #f3f3f3",
@@ -918,14 +1083,14 @@ justifyContent: "space-between",
     width: "40px",
     height: "40px",
     animation: "spin 1s linear infinite",
-    marginBottom: "20px",
+    marginBottom: "15px",
   },
   tableContainer: {
     overflowX: "auto",
     backgroundColor: "#FFFFFF",
     borderRadius: "8px",
     boxShadow: "0 2px 10px rgba(0, 31, 63, 0.1)",
-    marginBottom: "40px",
+    marginBottom: "20px",
     maxHeight: "400px",
   },
   table: {
@@ -937,32 +1102,35 @@ justifyContent: "space-between",
     backgroundColor: "#001F3F",
   },
   tableHeader: {
-    padding: "15px",
+    padding: "12px",
     textAlign: "left",
     color: "#FFFFFF",
     fontWeight: "600",
-    fontSize: "1rem",
+    fontSize: "0.9rem",
     borderBottom: "3px solid #001F3F",
+    whiteSpace: "nowrap",
   },
   tableRow: {
     borderBottom: "1px solid #E0E0E0",
+    transition: "background-color 0.2s ease",
   },
   tableCell: {
-    padding: "12px 15px",
+    padding: "10px 12px",
     color: "#001F3F",
-    fontSize: "0.95rem",
+    fontSize: "0.85rem",
+    verticalAlign: "middle",
   },
   noDataCell: {
-    padding: "40px",
+    padding: "30px",
     textAlign: "center",
     color: "#666",
-    fontSize: "1.1rem",
+    fontSize: "1rem",
     fontStyle: "italic",
   },
   actionButtons: {
     display: "flex",
-    gap: "8px",
     flexWrap: "wrap",
+    gap: "5px",
   },
   viewButton: {
     backgroundColor: "#2196F3",
@@ -970,10 +1138,11 @@ justifyContent: "space-between",
     border: "none",
     padding: "6px 12px",
     borderRadius: "4px",
-    fontSize: "0.85rem",
+    fontSize: "0.8rem",
     cursor: "pointer",
     transition: "all 0.3s ease",
     fontWeight: "500",
+    whiteSpace: "nowrap",
   },
   downloadButton: {
     backgroundColor: "#4CAF50",
@@ -981,10 +1150,11 @@ justifyContent: "space-between",
     border: "none",
     padding: "6px 12px",
     borderRadius: "4px",
-    fontSize: "0.85rem",
+    fontSize: "0.8rem",
     cursor: "pointer",
     transition: "all 0.3s ease",
     fontWeight: "500",
+    whiteSpace: "nowrap",
   },
   excelButton: {
     backgroundColor: "#FF9800",
@@ -992,10 +1162,11 @@ justifyContent: "space-between",
     border: "none",
     padding: "6px 12px",
     borderRadius: "4px",
-    fontSize: "0.85rem",
+    fontSize: "0.8rem",
     cursor: "pointer",
     transition: "all 0.3s ease",
     fontWeight: "500",
+    whiteSpace: "nowrap",
   },
   deleteButton: {
     backgroundColor: "#FF6B6B",
@@ -1003,10 +1174,11 @@ justifyContent: "space-between",
     border: "none",
     padding: "6px 12px",
     borderRadius: "4px",
-    fontSize: "0.85rem",
+    fontSize: "0.8rem",
     cursor: "pointer",
     transition: "all 0.3s ease",
     fontWeight: "500",
+    whiteSpace: "nowrap",
   },
   modalOverlay: {
     position: "fixed",
@@ -1014,57 +1186,81 @@ justifyContent: "space-between",
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
     zIndex: 1000,
-        margin: "20px",
-
+    padding: "10px",
   },
   modalContent: {
     backgroundColor: "#FFFFFF",
     borderRadius: "8px",
-    width: "90%",
-    maxWidth: "1000px",
-    maxHeight: "120vh",
+    width: "95%",
+    maxWidth: "800px",
+    maxHeight: "90vh",
     overflow: "hidden",
-    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.15)",
+    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.25)",
+  },
+  confirmModalContent: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: "8px",
+    width: "95%",
+    maxWidth: "500px",
+    overflow: "hidden",
+    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.25)",
   },
   modalHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: "20px",
+    padding: "15px 20px",
     backgroundColor: "#001F3F",
     color: "#FFFFFF",
   },
   modalTitle: {
     margin: 0,
-    fontSize: "1.5rem",
+    fontSize: "1.2rem",
     fontWeight: "600",
   },
   closeButton: {
     background: "none",
     border: "none",
     color: "#FFFFFF",
-    fontSize: "1.8rem",
+    fontSize: "1.5rem",
     cursor: "pointer",
-    padding: "0",
+    padding: 0,
     width: "30px",
     height: "30px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    transition: "color 0.2s ease",
   },
   modalBody: {
     padding: "20px",
+    maxHeight: "calc(90vh - 70px)",
+    overflow: "auto",
   },
   pdfContainer: {
     minHeight: "400px",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
+    flexDirection: "column",
+  },
+  confirmText: {
+    fontSize: "1rem",
+    color: "#001F3F",
+    marginBottom: "10px",
+    lineHeight: "1.5",
+  },
+  warningText: {
+    fontSize: "0.9rem",
+    color: "#FF6B6B",
+    marginBottom: "20px",
+    lineHeight: "1.5",
+    fontStyle: "italic",
   },
   modalActions: {
     display: "flex",
@@ -1074,27 +1270,53 @@ justifyContent: "space-between",
     paddingTop: "20px",
     borderTop: "1px solid #E0E0E0",
   },
+  deleteConfirmButton: {
+    backgroundColor: "#FF6B6B",
+    color: "#FFFFFF",
+    border: "none",
+    padding: "10px 20px",
+    borderRadius: "6px",
+    fontSize: "0.9rem",
+    cursor: "pointer",
+    transition: "all 0.3s ease",
+    fontWeight: "500",
+  },
   cancelButton: {
     backgroundColor: "#9E9E9E",
     color: "#FFFFFF",
     border: "none",
     padding: "10px 20px",
     borderRadius: "6px",
-    fontSize: "1rem",
+    fontSize: "0.9rem",
     cursor: "pointer",
     transition: "all 0.3s ease",
     fontWeight: "500",
   },
 };
 
-// Add CSS animation for spinner
-const spinnerStyles = document.createElement('style');
-spinnerStyles.textContent = `
+// Add CSS animations
+const spinnerStyles = `
   @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
   }
+  @keyframes slideIn {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
 `;
-document.head.appendChild(spinnerStyles);
+
+// Create style element and add to head
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.textContent = spinnerStyles;
+  document.head.appendChild(style);
+}
 
 export default ViewInvoice;
