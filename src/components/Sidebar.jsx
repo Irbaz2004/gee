@@ -16,7 +16,7 @@ import {
   Dashboard as DashboardIcon,
   BarChart as AnalyticsIcon,
   ShoppingCart as OrdersIcon,
-  People as UsersIcon,
+  Person as UsersIcon,
   Inventory as ProductsIcon,
   Help as HelpIcon
   
@@ -32,7 +32,7 @@ const StyledDrawer = styled(Drawer)(({ theme }) => ({
   '& .MuiDrawer-paper': {
     width: drawerWidth,
     boxSizing: 'border-box',
-    height: '100vh',
+    height: '94vh',
     borderRight: '1px solid rgba(0, 31, 63, 0.43)',
     backgroundColor: 'white',
     display: 'flex',
@@ -64,6 +64,7 @@ const menuItems = [
   { text: 'Generate Invoice', icon: <AnalyticsIcon />, path: '/generate-invoice' },
   { text: 'Material', icon: <OrdersIcon />, path: '/material' },
   { text: 'View Invoice', icon: <ProductsIcon />, path: '/view-invoice' },
+  { text: 'Admin Data', icon: <UsersIcon />, path: '/admin-data' },
   
 ];
 

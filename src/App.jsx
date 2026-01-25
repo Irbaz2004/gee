@@ -10,6 +10,7 @@ import DashboardLayout from './Layout/DashboardLayout';
 import GenerateInvoice from './Pages/GenerateInvoice';
 import Material from './Pages/Material';
 import ViewInvoice from './Pages/ViewInvoice';
+import AdminData from './Pages/AdminData';
 
 // Create theme FIRST, outside component
 const theme = createTheme({
@@ -55,6 +56,7 @@ function App() {
               <Route path="/generate-invoice" element={<GenerateInvoice />} />
               <Route path="/material" element={<Material />} />
               <Route path="/view-invoice" element={<ViewInvoice />} />
+              <Route path="/admin-data" element={<AdminData />} />
             </Route>
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
