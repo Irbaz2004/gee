@@ -32,7 +32,7 @@ const StyledDrawer = styled(Drawer)(({ theme }) => ({
   '& .MuiDrawer-paper': {
     width: drawerWidth,
     boxSizing: 'border-box',
-    height: '94vh',
+    height: '100vh',
     borderRight: '1px solid rgba(0, 31, 63, 0.43)',
     backgroundColor: 'white',
     display: 'flex',

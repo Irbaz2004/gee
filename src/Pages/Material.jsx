@@ -99,7 +99,7 @@ const Material = () => {
     const fetchMaterials = async () => {
       try {
         const materialsRef = collection(db, 'materials');
-        const q = query(materialsRef, orderBy('createdAt', 'desc'));
+        const q = query(materialsRef);
         
         const unsubscribe = onSnapshot(q, (snapshot) => {
           const materialsList = snapshot.docs.map(doc => ({
