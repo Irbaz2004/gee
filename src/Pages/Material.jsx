@@ -27,6 +27,7 @@ import {
   Tooltip,
   TablePagination,
   InputAdornment,
+ 
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -39,44 +40,45 @@ import {
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { db } from '../config';
-import { 
-  collection, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc, 
-  onSnapshot, 
-  query, 
-  orderBy,
-  serverTimestamp 
+import {
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  query,
+  serverTimestamp
 } from 'firebase/firestore';
+import { useCompany } from '../context/CompanyContext';
+import { getCompanyCollection } from '../utils/firestoreUtils';
 
 // Styled Components
-const NavyButton = styled(Button)(({ theme }) => ({
+const NavyButton = styled(Button)(() => ({
   backgroundColor: '#001F3F',
   color: 'white',
   borderRadius: 8,
-  padding: '10px 24px',
+  padding: '8px 20px',
   textTransform: 'none',
   fontWeight: 600,
-  fontSize: '1rem',
+  fontSize: '0.9rem', // Smaller font
   boxShadow: '0 4px 12px rgba(0, 31, 63, 0.25)',
   '&:hover': {
     backgroundColor: '#003366',
-    boxShadow: '0 6px 16px rgba(0, 31, 63, 0.35)',
-    transform: 'translateY(-2px)',
+    transform: 'translateY(-1px)',
   },
-  transition: 'all 0.3s ease',
+  transition: 'all 0.2s ease',
 }));
 
 const StyledPaper = styled(Paper)(({ theme }) => ({
-  padding: theme.spacing(4),
+  padding: theme.spacing(2), // Reduced padding
   borderRadius: 12,
-  backgroundColor: '#f8f9fa',
-  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
+  backgroundColor: '#ffffff',
+  boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+  border: '1px solid #edf2f7'
 }));
 
 const Material = () => {
+  const { selectedCompany } = useCompany();
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
@@ -94,13 +96,12 @@ const Material = () => {
   });
   const [formErrors, setFormErrors] = useState({});
 
-  // Fetch materials from Firebase
   useEffect(() => {
     const fetchMaterials = async () => {
+      if (!selectedCompany) return;
       try {
-        const materialsRef = collection(db, 'materials');
+        const materialsRef = getCompanyCollection(db, selectedCompany.id, 'materials');
         const q = query(materialsRef);
-        
         const unsubscribe = onSnapshot(q, (snapshot) => {
           const materialsList = snapshot.docs.map(doc => ({
             id: doc.id,
@@ -109,68 +110,40 @@ const Material = () => {
           setMaterials(materialsList);
           setLoading(false);
         }, (error) => {
-          console.error('Error fetching materials:', error);
-          showSnackbar('Failed to load materials', 'error');
+          showSnackbar('Failed to load materials', error);
+
           setLoading(false);
         });
-
         return () => unsubscribe();
       } catch (error) {
-        console.error('Error fetching materials:', error);
-        showSnackbar('Failed to load materials', 'error');
         setLoading(false);
+        showSnackbar('Error fetching materials', error);
       }
     };
-
     fetchMaterials();
-  }, []);
+  }, [selectedCompany]);
 
   const validateForm = () => {
     const errors = {};
-    
-    if (!formData.materialName.trim()) {
-      errors.materialName = 'Material name is required';
-    }
-    
+    if (!formData.materialName.trim()) errors.materialName = 'Required';
     if (!formData.hsnCode.trim()) {
-      errors.hsnCode = 'HSN code is required';
-    } else if (!/^\d{6,8}$/.test(formData.hsnCode)) {
-      errors.hsnCode = 'HSN code must be 6-8 digits';
+      errors.hsnCode = 'Required';
+    } else if (!/^\d{4,8}$/.test(formData.hsnCode)) {
+      errors.hsnCode = '4-8 digits required';
     }
-    
-    if (!formData.rate) {
-      errors.rate = 'Rate is required';
-    } else if (parseFloat(formData.rate) <= 0) {
-      errors.rate = 'Rate must be greater than 0';
-    } else if (isNaN(parseFloat(formData.rate))) {
-      errors.rate = 'Rate must be a valid number';
-    }
-    
+    if (!formData.rate || parseFloat(formData.rate) <= 0) errors.rate = 'Invalid rate';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    // Clear error when user starts typing
-    if (formErrors[name]) {
-      setFormErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (formErrors[name]) setFormErrors(prev => ({ ...prev, [name]: '' }));
   };
 
   const resetForm = () => {
-    setFormData({
-      materialName: '',
-      hsnCode: '',
-      rate: ''
-    });
+    setFormData({ materialName: '', hsnCode: '', rate: '' });
     setFormErrors({});
     setEditingMaterial(null);
   };
@@ -206,24 +179,19 @@ const Material = () => {
 
   const handleAddMaterial = async () => {
     if (!validateForm()) return;
-
     try {
       setLoading(true);
-      const materialsRef = collection(db, 'materials');
-      const materialData = {
-        materialName: formData.materialName.trim(),
-        hsnCode: formData.hsnCode.trim(),
+      const materialsRef = getCompanyCollection(db, selectedCompany.id, 'materials');
+      await addDoc(materialsRef, {
+        ...formData,
         rate: parseFloat(formData.rate),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
-      };
-
-      await addDoc(materialsRef, materialData);
-      showSnackbar('Material added successfully!', 'success');
+      });
+      showSnackbar('Material added successfully!');
       handleCloseDialog();
     } catch (error) {
-      console.error('Error adding material:', error);
-      showSnackbar('Failed to add material', 'error');
+      showSnackbar('Error adding material', error);
     } finally {
       setLoading(false);
     }
@@ -231,169 +199,105 @@ const Material = () => {
 
   const handleUpdateMaterial = async () => {
     if (!validateForm() || !editingMaterial) return;
-
     try {
       setLoading(true);
-      const materialRef = doc(db, 'materials', editingMaterial.id);
-      const materialData = {
-        materialName: formData.materialName.trim(),
-        hsnCode: formData.hsnCode.trim(),
+      const materialRef = doc(db, 'companies', selectedCompany.id, 'materials', editingMaterial.id);
+      await updateDoc(materialRef, {
+        ...formData,
         rate: parseFloat(formData.rate),
         updatedAt: serverTimestamp()
-      };
-
-      await updateDoc(materialRef, materialData);
-      showSnackbar('Material updated successfully!', 'success');
+      });
+      showSnackbar('Material updated!');
       handleCloseDialog();
     } catch (error) {
-      console.error('Error updating material:', error);
-      showSnackbar('Failed to update material', 'error');
+      showSnackbar('Update failed', error);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteMaterial = async () => {
-    if (!materialToDelete) return;
-
     try {
       setLoading(true);
-      const materialRef = doc(db, 'materials', materialToDelete.id);
+      const materialRef = doc(db, 'companies', selectedCompany.id, 'materials', materialToDelete.id);
       await deleteDoc(materialRef);
-      showSnackbar('Material deleted successfully!', 'success');
+      showSnackbar('Material deleted');
       handleCloseDeleteDialog();
     } catch (error) {
-      console.error('Error deleting material:', error);
-      showSnackbar('Failed to delete material', 'error');
+      showSnackbar('Delete failed', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const showSnackbar = (message, severity = 'success') => {
-    setSnackbar({ open: true, message, severity });
-  };
+  const showSnackbar = (message, severity = 'success') => setSnackbar({ open: true, message, severity });
+  const handleCloseSnackbar = () => setSnackbar(prev => ({ ...prev, open: false }));
 
-  const handleCloseSnackbar = () => {
-    setSnackbar(prev => ({ ...prev, open: false }));
-  };
-
-  // Filter materials based on search query
-  const filteredMaterials = materials.filter(material => 
+  const filteredMaterials = materials.filter(material =>
     material.materialName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     material.hsnCode.includes(searchQuery)
   );
 
-  // Pagination
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
-  };
-
-  const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
-  };
-
-  const paginatedMaterials = filteredMaterials.slice(
-    page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
-  );
-
-  const formatNumber = (num) => {
-    return new Intl.NumberFormat('en-IN', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(num);
-  };
+  const paginatedMaterials = filteredMaterials.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
   return (
-    <Container maxWidth="xl" sx={{ py: 4, backgroundColor: '#ffffff', minHeight: '75vh', borderRadius: 2, mt: -2, mb: -2 }}>
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={3000}
-        onClose={handleCloseSnackbar}
-        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-      >
-        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
-          {snackbar.message}
-        </Alert>
+    <Container maxWidth="xl" sx={{ py: 3, backgroundColor: '#ffffff', minHeight: '80vh', borderRadius: 2 }}>
+      <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={handleCloseSnackbar} anchorOrigin={{ vertical: 'top', horizontal: 'right' }}>
+        <Alert severity={snackbar.severity} sx={{ width: '100%' }}>{snackbar.message}</Alert>
       </Snackbar>
 
-      {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+      {/* Header Area */}
+      <Box sx={{ mb: 3 }}>
+        <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
           <Box display="flex" alignItems="center">
-            <InventoryIcon sx={{ fontSize: 40, color: '#001F3F', mr: 2 }} />
+            <InventoryIcon sx={{ fontSize: 32, color: '#001F3F', mr: 1.5 }} />
             <Box>
-              <Typography variant="h4" component="h1" fontWeight={700} color="#001F3F">
+              <Typography variant="h5" fontWeight={700} color="#001F3F" sx={{ lineHeight: 1.2 }}>
                 Material Management
               </Typography>
-              <Typography variant="body1" color="text.secondary">
-                Add, edit and manage your materials
+              <Typography variant="caption" color="text.secondary">
+                Inventory control and pricing
               </Typography>
             </Box>
           </Box>
-          <NavyButton
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenDialog()}
-          >
-            Add New Material
+          <NavyButton startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
+            Add Material
           </NavyButton>
         </Box>
 
-        <Card sx={{ backgroundColor: '#001F3F', color: 'white', borderRadius: 2 }}>
-          <CardContent>
+        {/* Stats & Search Row */}
+        <Card sx={{ backgroundColor: '#001F3F', borderRadius: 3, overflow: 'visible' }}>
+          <CardContent sx={{ py: '16px !important' }}>
             <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={3} sx={{ backgroundColor: "white", px: 2, py: 1, borderRadius: 1 }}>
-                <Box display="flex" alignItems="center" ml={2}>
-                  <Box>
-                    <Typography variant="body2" color='#001F3F' fontWeight={'bold'} ml={-2}>Total Materials</Typography>
-                    <Typography variant="h5" color='#001F3F' fontSize={29} fontWeight={700}>
-                      {materials.length}
-                    </Typography>
-                  </Box>
+              <Grid item xs={12} md={2.5}minWidth={'200px'}>
+                <Box sx={{ backgroundColor: "white", px: 2, py: 1, borderRadius: 2, textAlign: 'center' }}>
+                  <Typography variant="caption" color='#64748b' fontWeight={700} sx={{ textTransform: 'uppercase' }}>
+                    Total Items
+                  </Typography>
+                  <Typography variant="h5" color='#0f172a' fontWeight={800}>
+                    {materials.length}
+                  </Typography>
                 </Box>
               </Grid>
-              <Grid item xs={12} md={3} sx={{ backgroundColor: "white", px: 2, py: 1, borderRadius: 1 }}>
-                <Box display="flex" alignItems="center" ml={2}>
-                  <Box>
-                    <Typography variant="body2" color='#001F3F' fontWeight={'bold'} ml={-2}>Unique HSN Codes</Typography>
-                    <Typography variant="h5" color='#001F3F' fontSize={29} fontWeight={700}>
-                      {new Set(materials.map(m => m.hsnCode)).size}
-                    </Typography>
-                  </Box>
-                </Box>
-              </Grid>
-              <Grid item xs={12} md={6} ml={2}>
+              <Grid item xs={12} md={9.5}minWidth={'600px'}>
                 <TextField
                   fullWidth
-                  placeholder="Search materials by name or HSN code..."
+                  placeholder="Search by material name or HSN code..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   size="small"
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
-                        <SearchIcon sx={{ color: 'rgba(255,255,255,0.7)' }} />
+                        <SearchIcon sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 20 }} />
                       </InputAdornment>
                     ),
                     sx: {
                       backgroundColor: 'rgba(255,255,255,0.1)',
                       color: 'white',
-                      minWidth: 550,
                       borderRadius: 2,
-                      '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(255,255,255,0.3)',
-                      },
-                      '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(255,255,255,0.5)',
-                      },
-                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'white',
-                      },
-                      '& input::placeholder': {
-                        color: 'rgba(255,255,255,0.7)',
-                      }
+                      '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                      '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
                     }
                   }}
                 />
@@ -403,379 +307,91 @@ const Material = () => {
         </Card>
       </Box>
 
-      {/* Materials Table */}
-      <StyledPaper>
-        {loading && materials.length === 0 ? (
-          <Box display="flex" justifyContent="center" alignItems="center" py={8}>
-            <CircularProgress size={60} sx={{ color: '#001F3F' }} />
-          </Box>
-        ) : (
-          <>
-            <TableContainer sx={{ maxHeight: '55vh', overflow: 'auto', position: 'relative' }}>
-              <Table stickyHeader>
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ 
-                      backgroundColor: '#001F3F', 
-                      color: 'white', 
-                      fontWeight: 600,
-                      position: 'sticky',
-                      top: 0,
-                      zIndex: 1,
-                      borderBottom: '2px solid #001F3F'
-                    }}>
-                      S.No
-                    </TableCell>
-                    <TableCell sx={{ 
-                      backgroundColor: '#001F3F', 
-                      color: 'white', 
-                      fontWeight: 600,
-                      position: 'sticky',
-                      top: 0,
-                      zIndex: 1,
-                      borderBottom: '2px solid #001F3F'
-                    }}>
-                      Material Name
-                    </TableCell>
-                    <TableCell sx={{ 
-                      backgroundColor: '#001F3F', 
-                      color: 'white', 
-                      fontWeight: 600,
-                      position: 'sticky',
-                      top: 0,
-                      zIndex: 1,
-                      borderBottom: '2px solid #001F3F'
-                    }}>
-                      HSN Code
-                    </TableCell>
-                    <TableCell sx={{ 
-                      backgroundColor: '#001F3F', 
-                      color: 'white', 
-                      fontWeight: 600,
-                      position: 'sticky',
-                      top: 0,
-                      zIndex: 1,
-                      borderBottom: '2px solid #001F3F'
-                    }} align="right">
-                      Rate (₹)
-                    </TableCell>
-                    <TableCell sx={{ 
-                      backgroundColor: '#001F3F', 
-                      color: 'white', 
-                      fontWeight: 600,
-                      position: 'sticky',
-                      top: 0,
-                      zIndex: 1,
-                      borderBottom: '2px solid #001F3F'
-                    }}>
-                      Last Updated
-                    </TableCell>
-                    <TableCell sx={{ 
-                      backgroundColor: '#001F3F', 
-                      color: 'white', 
-                      fontWeight: 600,
-                      position: 'sticky',
-                      top: 0,
-                      zIndex: 1,
-                      borderBottom: '2px solid #001F3F'
-                    }} align="center">
-                      Actions
-                    </TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {paginatedMaterials.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                        <InventoryIcon sx={{ fontSize: 60, color: '#ccc', mb: 2 }} />
-                        <Typography variant="h6" color="text.secondary">
-                          {searchQuery ? 'No materials found matching your search' : 'No materials added yet'}
-                        </Typography>
-                        {!searchQuery && (
-                          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                            Click "Add New Material" to get started
-                          </Typography>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    paginatedMaterials.map((material, index) => (
-                      <TableRow 
-                        key={material.id} 
-                        hover
-                        sx={{ 
-                          '&:hover': { backgroundColor: 'rgba(0, 31, 63, 0.04)' },
-                          '&:nth-of-type(odd)': { backgroundColor: '#f9f9f9' }
-                        }}
-                      >
-                        <TableCell>
-                          <Typography fontWeight={500}>
-                            {(page * rowsPerPage) + index + 1}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Box display="flex" alignItems="center">
-                            <InventoryIcon sx={{ color: '#001F3F', mr: 1, fontSize: 20 }} />
-                            <Typography fontWeight={600}>
-                              {material.materialName}
-                            </Typography>
-                          </Box>
-                        </TableCell>
-                        <TableCell>
-                          <Chip 
-                            label={material.hsnCode} 
-                            size="small" 
-                            icon={<CodeIcon fontSize="small" />}
-                            sx={{ 
-                              backgroundColor: 'rgba(0, 31, 63, 0.1)',
-                              color: '#001F3F',
-                              fontWeight: 600
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell align="right">
-                          <Box display="flex" alignItems="center" justifyContent="flex-end">
-                            <CurrencyRupeeIcon sx={{ color: '#2e7d32', mr: 0.5, fontSize: 18 }} />
-                            <Typography fontWeight={700} color="#2e7d32">
-                              {formatNumber(material.rate)}
-                            </Typography>
-                          </Box>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" color="text.secondary">
-                            {material.updatedAt?.toDate ? 
-                              new Date(material.updatedAt.toDate()).toLocaleDateString('en-IN', {
-                                day: '2-digit',
-                                month: 'short',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              }) : 'N/A'}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="center">
-                          <Box display="flex" justifyContent="center" gap={1}>
-                            <Tooltip title="Edit Material">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleOpenDialog(material)}
-                                sx={{ 
-                                  backgroundColor: 'rgba(25, 118, 210, 0.1)',
-                                  '&:hover': { backgroundColor: 'rgba(25, 118, 210, 0.2)' }
-                                }}
-                              >
-                                <EditIcon fontSize="small" sx={{ color: '#1976d2' }} />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Delete Material">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleOpenDeleteDialog(material)}
-                                sx={{ 
-                                  backgroundColor: 'rgba(211, 47, 47, 0.1)',
-                                  '&:hover': { backgroundColor: 'rgba(211, 47, 47, 0.2)' }
-                                }}
-                              >
-                                <DeleteIcon fontSize="small" sx={{ color: '#d32f2f' }} />
-                              </IconButton>
-                            </Tooltip>
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-
-            {/* Pagination */}
-            {filteredMaterials.length > 0 && (
-              <TablePagination
-                rowsPerPageOptions={[5, 10, 25, 50]}
-                component="div"
-                count={filteredMaterials.length}
-                rowsPerPage={rowsPerPage}
-                page={page}
-                onPageChange={handleChangePage}
-                onRowsPerPageChange={handleChangeRowsPerPage}
-                sx={{
-                  '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
-                    fontWeight: 500,
-                  },
-                  borderTop: '1px solid #e0e0e0',
-                  mt: 2
-                }}
-              />
-            )}
-          </>
-        )}
+      {/* Table Section */}
+      <StyledPaper elevation={0}>
+        <TableContainer sx={{ maxHeight: '50vh',minHeight: 260 }}>
+          <Table stickyHeader size="small">
+            <TableHead>
+              <TableRow>
+                {['S.No', 'Material Name', 'HSN Code', 'Rate (₹)', 'Updated', 'Actions'].map((head) => (
+                  <TableCell key={head} sx={{ backgroundColor: '#f8fafc', color: '#475569', fontWeight: 700, fontSize: '0.75rem', py: 1.5 }}>
+                    {head}
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {paginatedMaterials.map((material, index) => (
+                <TableRow key={material.id} hover sx={{ '&:last-child td': { border: 0 } }}>
+                  <TableCell sx={{ fontSize: '0.85rem' }}>{ (page * rowsPerPage) + index + 1 }</TableCell>
+                  <TableCell sx={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>{material.materialName}</TableCell>
+                  <TableCell>
+                    <Chip label={material.hsnCode} size="small" sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, backgroundColor: '#f1f5f9' }} />
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: '#10b981', fontSize: '0.85rem' }}>
+                    {new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2 }).format(material.rate)}
+                  </TableCell>
+                  <TableCell sx={{ fontSize: '0.75rem', color: '#64748b' }}>
+                    {material.updatedAt?.toDate ? new Date(material.updatedAt.toDate()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '---'}
+                  </TableCell>
+                  <TableCell align="center">
+                    <Box display="flex" gap={0.5}>
+                      <IconButton size="small" onClick={() => handleOpenDialog(material)} sx={{ color: '#3b82f6' }}>
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton size="small" onClick={() => handleOpenDeleteDialog(material)} sx={{ color: '#ef4444' }}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <TablePagination
+          rowsPerPageOptions={[10, 25]}
+          component="div"
+          count={filteredMaterials.length}
+          rowsPerPage={rowsPerPage}
+          page={page}
+          onPageChange={(e, p) => setPage(p)}
+          onRowsPerPageChange={(e) => setRowsPerPage(parseInt(e.target.value, 10))}
+        />
       </StyledPaper>
 
-      {/* Add/Edit Material Dialog */}
-      <Dialog 
-        open={openDialog} 
-        onClose={handleCloseDialog}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle sx={{ backgroundColor: '#001F3F', color: 'white' }}>
-          <Box display="flex" alignItems="center">
-            <InventoryIcon sx={{ mr: 1 }} />
-            {editingMaterial ? 'Edit Material' : 'Add New Material'}
-          </Box>
+     
+
+      {/* Dialogs remain mostly same but with smaller padding/text */}
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ backgroundColor: '#001F3F', color: 'white', py: 2, fontSize: '1.1rem' }}>
+          {editingMaterial ? 'Edit Material' : 'Add New Material'}
         </DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
-          <Grid container spacing={3} mt={4}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Material Name"
-                name="materialName"
-                value={formData.materialName}
-                onChange={handleInputChange}
-                error={!!formErrors.materialName}
-                helperText={formErrors.materialName}
-                required
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <InventoryIcon color="action" />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="HSN Code"
-                name="hsnCode"
-                value={formData.hsnCode}
-                onChange={handleInputChange}
-                error={!!formErrors.hsnCode}
-                helperText={formErrors.hsnCode || "6-8 digit HSN code"}
-                required
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <CodeIcon color="action" />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Rate (₹)"
-                name="rate"
-                type="number"
-                value={formData.rate}
-                onChange={handleInputChange}
-                error={!!formErrors.rate}
-                helperText={formErrors.rate}
-                required
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <CurrencyRupeeIcon color="action" />
-                    </InputAdornment>
-                  ),
-                  inputProps: { 
-                    min: 0,
-                    step: 0.01
-                  }
-                }}
-              />
-            </Grid>
-          </Grid>
+        <DialogContent sx={{ mt: 2 }}>
+          <TextField fullWidth label="Material Name" name="materialName" size="small" value={formData.materialName} onChange={handleInputChange} error={!!formErrors.materialName} sx={{ mb: 2, mt: 1 }} />
+          <TextField fullWidth label="HSN Code" name="hsnCode" size="small" value={formData.hsnCode} onChange={handleInputChange} error={!!formErrors.hsnCode} sx={{ mb: 2 }} />
+          <TextField fullWidth label="Rate (₹)" name="rate" type="number" size="small" value={formData.rate} onChange={handleInputChange} error={!!formErrors.rate} />
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button onClick={handleCloseDialog} sx={{ color: '#666' }}>
-            Cancel
-          </Button>
-          <NavyButton
-            onClick={editingMaterial ? handleUpdateMaterial : handleAddMaterial}
-            disabled={loading}
-            startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
-          >
-            {loading ? 'Processing...' : editingMaterial ? 'Update Material' : 'Add Material'}
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={handleCloseDialog} size="small">Cancel</Button>
+          <NavyButton onClick={editingMaterial ? handleUpdateMaterial : handleAddMaterial} disabled={loading}>
+            {editingMaterial ? 'Update' : 'Add Material'}
           </NavyButton>
         </DialogActions>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog 
-        open={openDeleteDialog} 
-        onClose={handleCloseDeleteDialog}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle sx={{ backgroundColor: '#d32f2f', color: 'white' }}>
-          <Box display="flex" alignItems="center">
-            <DeleteIcon sx={{ mr: 1 }} />
-            Confirm Delete
-          </Box>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
-          <Box textAlign="center" py={2}>
-            <DeleteIcon sx={{ fontSize: 60, color: '#d32f2f', mb: 2 }} />
-            <Typography variant="h6" gutterBottom>
-              Are you sure you want to delete this material?
-            </Typography>
-            {materialToDelete && (
-              <Box sx={{ mt: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 2 }}>
-                <Typography variant="body1" fontWeight={600}>
-                  {materialToDelete.materialName}
-                </Typography>
-                <Box display="flex" justifyContent="center" gap={3} mt={1}>
-                  <Chip 
-                    label={`HSN: ${materialToDelete.hsnCode}`} 
-                    size="small" 
-                    sx={{ backgroundColor: 'rgba(0, 31, 63, 0.1)', color: '#001F3F' }}
-                  />
-                  <Chip 
-                    label={`Rate: ₹${formatNumber(materialToDelete.rate)}`} 
-                    size="small" 
-                    sx={{ backgroundColor: 'rgba(46, 125, 50, 0.1)', color: '#2e7d32' }}
-                  />
-                </Box>
-              </Box>
-            )}
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-              This action cannot be undone. All associated data will be permanently removed.
-            </Typography>
-          </Box>
+      {/* Delete Dialog */}
+      <Dialog open={openDeleteDialog} onClose={handleCloseDeleteDialog}>
+        <DialogContent sx={{ textAlign: 'center', pt: 4 }}>
+          <DeleteIcon sx={{ fontSize: 48, color: '#ef4444', mb: 2 }} />
+          <Typography variant="h6">Delete Material?</Typography>
+          <Typography variant="body2" color="text.secondary">This action cannot be undone.</Typography>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button 
-            onClick={handleCloseDeleteDialog} 
-            sx={{ color: '#666' }}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleDeleteMaterial}
-            disabled={loading}
-            variant="contained"
-            color="error"
-            startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <DeleteIcon />}
-            sx={{
-              backgroundColor: '#d32f2f',
-              '&:hover': { backgroundColor: '#c62828' }
-            }}
-          >
-            {loading ? 'Deleting...' : 'Delete Material'}
-          </Button>
+        <DialogActions sx={{ pb: 3, px: 3, justifyContent: 'center' }}>
+          <Button onClick={handleCloseDeleteDialog}>Cancel</Button>
+          <Button onClick={handleDeleteMaterial} variant="contained" color="error">Delete</Button>
         </DialogActions>
       </Dialog>
-
-      {/* Quick Tips */}
-      <Box sx={{ mt: 4, textAlign: 'center' }}>
-        <Typography variant="body2" color="text.secondary">
-          <strong>Tip:</strong> Materials added here will be available for selection in the Invoice Generator
-        </Typography>
-      </Box>
     </Container>
   );
 };

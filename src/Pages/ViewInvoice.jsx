@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from "react";
-import { collection, getDocs, doc, deleteDoc } from "firebase/firestore";
+import { getDocs, doc, deleteDoc } from "firebase/firestore";
 import { db } from "../config";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
 import { useNavigate } from "react-router-dom";
+import { useCompany } from "../context/CompanyContext";
+import { getCompanyCollection } from "../utils/firestoreUtils";
+
 import Logo from "../assets/Logo.png";
 
 const ViewInvoice = () => {
+  const { selectedCompany } = useCompany();
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState([]);
   const [filteredInvoices, setFilteredInvoices] = useState([]);
@@ -27,21 +31,23 @@ const ViewInvoice = () => {
   // Fetch invoices from Firebase
   useEffect(() => {
     fetchInvoices();
-  }, []);
+  }, [selectedCompany]);
 
   const fetchInvoices = async () => {
     try {
+      if (!selectedCompany) return;
+
       setLoading(true);
-      const invoicesCollection = collection(db, "invoices");
+      const invoicesCollection = getCompanyCollection(db, selectedCompany.id, "invoices");
       const invoicesSnapshot = await getDocs(invoicesCollection);
       const invoicesList = invoicesSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
-      
+
       // Sort by date (newest first)
       invoicesList.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-      
+
       setInvoices(invoicesList);
       setFilteredInvoices(invoicesList);
       showNotification("Invoices loaded successfully!", "success");
@@ -56,7 +62,7 @@ const ViewInvoice = () => {
   // Custom notification function
   const showNotification = (message, type = "info") => {
     setNotification({ message, type, show: true });
-    
+
     // Auto-hide after 3 seconds
     setTimeout(() => {
       setNotification({ message: "", type: "", show: false });
@@ -70,7 +76,7 @@ const ViewInvoice = () => {
     // Search filter
     if (filters.search) {
       const searchTerm = filters.search.toLowerCase();
-      result = result.filter(invoice => 
+      result = result.filter(invoice =>
         invoice.invoiceNumber.toLowerCase().includes(searchTerm) ||
         invoice.clientName.toLowerCase().includes(searchTerm) ||
         (invoice.companyName && invoice.companyName.toLowerCase().includes(searchTerm))
@@ -79,7 +85,7 @@ const ViewInvoice = () => {
 
     // Client name filter
     if (filters.clientName) {
-      result = result.filter(invoice => 
+      result = result.filter(invoice =>
         invoice.clientName.toLowerCase() === filters.clientName.toLowerCase()
       );
     }
@@ -149,7 +155,8 @@ const ViewInvoice = () => {
     if (!invoiceToDelete) return;
 
     try {
-      await deleteDoc(doc(db, "invoices", invoiceToDelete.id));
+      const invoiceRef = doc(db, "companies", selectedCompany.id, "invoices", invoiceToDelete.id);
+      await deleteDoc(invoiceRef);
       showNotification(`Invoice ${invoiceToDelete.invoiceNumber} deleted successfully!`, "success");
       fetchInvoices(); // Refresh the list
     } catch (error) {
@@ -215,7 +222,6 @@ const ViewInvoice = () => {
           "SGST Amount": totals.sgstAmount || 0,
           "Grand Total": totals.total || 0,
           "PO Number": invoice.poNumber || "N/A",
-          "Bill No": invoice.BillNo || "N/A",
           "DC No": invoice.DCNO || "N/A",
           "Created Date": formatDate(invoice.timestamp),
         };
@@ -223,11 +229,11 @@ const ViewInvoice = () => {
 
       // Create worksheet
       const worksheet = XLSX.utils.json_to_sheet(excelData);
-      
+
       // Create workbook
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Invoices");
-      
+
       // Set column widths
       const colWidths = [
         { wch: 15 }, // Invoice No
@@ -272,7 +278,6 @@ const ViewInvoice = () => {
         "Company GSTIN": invoice.companyGSTIN || "N/A",
         "Company Contact": invoice.companyContact || "N/A",
         "PO Number": invoice.poNumber || "N/A",
-        "Bill No": invoice.BillNo || "N/A",
         "DC No": invoice.DCNO || "N/A",
         "DC Date": formatDate(invoice.DCDate),
         "CGST %": invoice.cgstPercentage || 0,
@@ -299,29 +304,29 @@ const ViewInvoice = () => {
 
       // Create workbook with multiple sheets
       const workbook = XLSX.utils.book_new();
-      
+
       // Invoice details sheet
       const invoiceSheet = XLSX.utils.json_to_sheet(invoiceData);
       XLSX.utils.book_append_sheet(workbook, invoiceSheet, "Invoice Details");
-      
+
       // Materials sheet
       const materialsSheet = XLSX.utils.json_to_sheet(materialsData);
       XLSX.utils.book_append_sheet(workbook, materialsSheet, "Materials");
-      
+
       // Totals sheet
       const totalsSheet = XLSX.utils.json_to_sheet(totalsData);
       XLSX.utils.book_append_sheet(workbook, totalsSheet, "Totals");
 
       // Set column widths
       invoiceSheet['!cols'] = [
-        { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 30 }, 
-        { wch: 20 }, { wch: 15 }, { wch: 30 }, { wch: 40 }, 
-        { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, 
+        { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 30 },
+        { wch: 20 }, { wch: 15 }, { wch: 30 }, { wch: 40 },
+        { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 12 },
         { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }
       ];
 
       materialsSheet['!cols'] = [
-        { wch: 8 }, { wch: 40 }, { wch: 15 }, 
+        { wch: 8 }, { wch: 40 }, { wch: 15 },
         { wch: 12 }, { wch: 15 }, { wch: 15 }
       ];
 
@@ -352,7 +357,7 @@ const ViewInvoice = () => {
   const generateAndDownloadPDF = async (invoice) => {
     try {
       const pdf = await generatePDFDocument(invoice);
-      
+
       // Save the PDF
       const fileName = `Invoice_${invoice.invoiceNumber}_${new Date(invoice.invoiceDate || invoice.timestamp).toISOString().split("T")[0]}.pdf`;
       pdf.save(fileName);
@@ -365,103 +370,105 @@ const ViewInvoice = () => {
 
 
 
-const generatePDFDocument = async (invoice) => {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const materials = invoice.materials || [];
-      const totals = invoice.totals || calculateInvoiceTotals(invoice);
-      const materialsPerPage = 13; // Changed from 8 to 13 to match original
-      const pageCount = Math.ceil(materials.length / materialsPerPage);
-      
-      const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: "a4",
-      });
+  const generatePDFDocument = async (invoice) => {
+    return new Promise((resolve, reject) => {
+      (async () => {
+        try {
+          const materials = invoice.materials || [];
+          const totals = invoice.totals || calculateInvoiceTotals(invoice);
+          const materialsPerPage = 13; // Changed from 8 to 13 to match original
+          const pageCount = Math.ceil(materials.length / materialsPerPage);
 
-      // Generate each page
-      for (let page = 0; page < pageCount; page++) {
-        if (page > 0) {
-          pdf.addPage();
+          const pdf = new jsPDF({
+            orientation: "portrait",
+            unit: "mm",
+            format: "a4",
+          });
+
+          // Generate each page
+          for (let page = 0; page < pageCount; page++) {
+          if (page > 0) {
+            pdf.addPage();
+          }
+
+          // Create a simple HTML string for the page
+          const pageHTML = generatePageHTML(invoice, page, materialsPerPage, pageCount, totals);
+
+          // Create temporary container - Matching original structure
+          const tempContainer = document.createElement("div");
+          tempContainer.style.position = "fixed";
+          tempContainer.style.left = "-10000px";
+          tempContainer.style.top = "0";
+          tempContainer.style.width = "200mm"; // Adjusted for border
+          tempContainer.style.backgroundColor = "white";
+          tempContainer.style.fontFamily = "'Poppins', sans-serif";
+          tempContainer.style.overflow = "visible";
+
+          // Create inner page div with border and padding
+          const pageDiv = document.createElement("div");
+          pageDiv.style.width = "200mm";
+          pageDiv.style.padding = "8mm 6mm";
+          pageDiv.style.margin = "0";
+          pageDiv.style.backgroundColor = "white";
+          pageDiv.style.boxSizing = "border-box";
+          pageDiv.style.fontFamily = "'Poppins', sans-serif";
+          pageDiv.style.minHeight = "285mm";
+          pageDiv.style.border = "2px solid #001F3F";
+          pageDiv.style.borderRadius = "3px";
+
+          pageDiv.innerHTML = pageHTML;
+          tempContainer.appendChild(pageDiv);
+          document.body.appendChild(tempContainer);
+
+          // Wait for images to load
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+          // Convert to canvas - Matching original settings
+          const canvas = await html2canvas(pageDiv, {
+            scale: 2,
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: "#ffffff",
+            width: pageDiv.offsetWidth,
+            height: pageDiv.offsetHeight,
+            scrollX: 0,
+            scrollY: 0,
+            windowWidth: pageDiv.scrollWidth,
+            windowHeight: pageDiv.scrollHeight,
+            logging: false,
+          });
+
+          // Remove temporary container
+          document.body.removeChild(tempContainer);
+
+          // Add image to PDF - Matching original dimensions
+          const imgData = canvas.toDataURL("image/png");
+          const imgWidth = 186; // Adjusted for border
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+          const xPos = 12; // Adjusted for border
+          const yPos = 12; // Adjusted for border
+          pdf.addImage(imgData, "PNG", xPos, yPos, imgWidth, imgHeight);
         }
 
-        // Create a simple HTML string for the page
-        const pageHTML = generatePageHTML(invoice, page, materialsPerPage, pageCount, totals);
-        
-        // Create temporary container - Matching original structure
-        const tempContainer = document.createElement("div");
-        tempContainer.style.position = "fixed";
-        tempContainer.style.left = "-10000px";
-        tempContainer.style.top = "0";
-        tempContainer.style.width = "200mm"; // Adjusted for border
-        tempContainer.style.backgroundColor = "white";
-        tempContainer.style.fontFamily = "'Poppins', sans-serif";
-        tempContainer.style.overflow = "visible";
-        
-        // Create inner page div with border and padding
-        const pageDiv = document.createElement("div");
-        pageDiv.style.width = "200mm";
-        pageDiv.style.padding = "8mm 6mm";
-        pageDiv.style.margin = "0";
-        pageDiv.style.backgroundColor = "white";
-        pageDiv.style.boxSizing = "border-box";
-        pageDiv.style.fontFamily = "'Poppins', sans-serif";
-        pageDiv.style.minHeight = "285mm";
-        pageDiv.style.border = "2px solid #001F3F";
-        pageDiv.style.borderRadius = "3px";
-        
-        pageDiv.innerHTML = pageHTML;
-        tempContainer.appendChild(pageDiv);
-        document.body.appendChild(tempContainer);
+          resolve(pdf);
+        } catch (error) {
+          reject(error);
+        }
+      })();
+    });
+  };
 
-        // Wait for images to load
-        await new Promise(resolve => setTimeout(resolve, 500));
+  // Helper function to generate page HTML matching the original structure
+  const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) => {
+    const startIdx = page * materialsPerPage;
+    const endIdx = Math.min(startIdx + materialsPerPage, invoice.materials.length);
 
-        // Convert to canvas - Matching original settings
-        const canvas = await html2canvas(pageDiv, {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: "#ffffff",
-          width: pageDiv.offsetWidth,
-          height: pageDiv.offsetHeight,
-          scrollX: 0,
-          scrollY: 0,
-          windowWidth: pageDiv.scrollWidth,
-          windowHeight: pageDiv.scrollHeight,
-          logging: false,
-        });
+    let html = '';
 
-        // Remove temporary container
-        document.body.removeChild(tempContainer);
-
-        // Add image to PDF - Matching original dimensions
-        const imgData = canvas.toDataURL("image/png");
-        const imgWidth = 186; // Adjusted for border
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-        const xPos = 12; // Adjusted for border
-        const yPos = 12; // Adjusted for border
-        pdf.addImage(imgData, "PNG", xPos, yPos, imgWidth, imgHeight);
-      }
-
-      resolve(pdf);
-    } catch (error) {
-      reject(error);
-    }
-  });
-};
-
-// Helper function to generate page HTML matching the original structure
-const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) => {
-  const startIdx = page * materialsPerPage;
-  const endIdx = Math.min(startIdx + materialsPerPage, invoice.materials.length);
-  
-  let html = '';
-
-  // Header Section (only on first page)
-  if (page === 0) {
-    html += `
+    // Header Section (only on first page)
+    if (page === 0) {
+      html += `
       <div class="pdf-header" style="margin-bottom: 10px; font-family: 'Poppins', sans-serif;">
         <!-- Company Header -->
         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1.5px solid #001F3F; font-family: 'Poppins', sans-serif;">
@@ -512,10 +519,10 @@ const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) =>
         </div>
       </div>
     `;
-  }
+    }
 
-  // Materials Table
-  html += `
+    // Materials Table
+    html += `
     <table style="width: 100%; border-collapse: collapse; font-size: 10px; margin-top: ${page === 0 ? '10px' : '0'}; color: #001F3F; font-family: 'Poppins', sans-serif; table-layout: fixed;">
       <thead style="background-color: #001F3F; color: white; font-family: 'Poppins', sans-serif;">
         <tr style="font-family: 'Poppins', sans-serif; height: 22px;">
@@ -530,14 +537,14 @@ const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) =>
       <tbody style="font-family: 'Poppins', sans-serif;">
   `;
 
-  // Add material rows
-  for (let i = startIdx; i < endIdx; i++) {
-    const material = invoice.materials[i];
-    const description = material.description || '';
-    const truncatedDescription = description.length > 120 ? 
-      description.substring(0, 120) + '...' : description;
-    
-    html += `
+    // Add material rows
+    for (let i = startIdx; i < endIdx; i++) {
+      const material = invoice.materials[i];
+      const description = material.description || '';
+      const truncatedDescription = description.length > 120 ?
+        description.substring(0, 120) + '...' : description;
+
+      html += `
       <tr style="height: 20px; background-color: ${i % 2 === 0 ? '#F5F7FA' : 'white'}; font-family: 'Poppins', sans-serif;">
         <td style="border: 1px solid #001F3F; padding: 5px; text-align: center; color: #001F3F; font-family: 'Poppins', sans-serif; font-size: 10px; vertical-align: top;">${i + 1}.</td>
         <td style="border: 1px solid #001F3F; padding: 5px; color: #001F3F; font-family: 'Poppins', sans-serif; font-size: 10px; vertical-align: top; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${description}">${truncatedDescription}</td>
@@ -547,12 +554,12 @@ const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) =>
         <td style="border: 1px solid #001F3F; padding: 5px; text-align: right; font-weight: bold; color: #001F3F; font-family: 'Poppins', sans-serif; font-size: 10px; vertical-align: top;">${formatNumber(material.amount)}</td>
       </tr>
     `;
-  }
+    }
 
-  // Add empty rows if needed
-  const remainingRows = materialsPerPage - (endIdx - startIdx);
-  for (let i = 0; i < remainingRows; i++) {
-    html += `
+    // Add empty rows if needed
+    const remainingRows = materialsPerPage - (endIdx - startIdx);
+    for (let i = 0; i < remainingRows; i++) {
+      html += `
       <tr style="height: 20px; font-family: 'Poppins', sans-serif;">
         <td style="border: 1px solid #001F3F; padding: 5px; color: #001F3F; font-family: 'Poppins', sans-serif; font-size: 10px;">${endIdx + i + 1}.</td>
         <td style="border: 1px solid #001F3F; padding: 5px; font-family: 'Poppins', sans-serif;"></td>
@@ -562,11 +569,11 @@ const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) =>
         <td style="border: 1px solid #001F3F; padding: 5px; font-family: 'Poppins', sans-serif;"></td>
       </tr>
     `;
-  }
+    }
 
-  // Add totals for last page
-  if (page === pageCount - 1) {
-    html += `
+    // Add totals for last page
+    if (page === pageCount - 1) {
+      html += `
       <!-- Subtotal -->
       <tr style="background-color: #E8F4F8; font-family: 'Poppins', sans-serif; height: 22px;">
         <td colspan="5" style="border: 1px solid #001F3F; padding: 7px; text-align: right; font-weight: bold; font-size: 11px; color: #001F3F; font-family: 'Poppins', sans-serif;">Sub Total:</td>
@@ -591,13 +598,13 @@ const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) =>
         <td style="border: 1px solid #001F3F; padding: 9px; font-weight: bold; font-size: 12px; text-align: right; font-family: 'Poppins', sans-serif;">₹ ${formatNumber(totals.total)}</td>
       </tr>
     `;
-  }
+    }
 
-  html += '</tbody></table>';
+    html += '</tbody></table>';
 
-  // Add footer for last page
-  if (page === pageCount - 1) {
-    html += `
+    // Add footer for last page
+    if (page === pageCount - 1) {
+      html += `
       <div style="margin-top: 15px; font-family: 'Poppins', sans-serif;">
         <!-- Amount in words -->
         <div style="border: 1.5px solid #001F3F; padding: 10px; font-size: 10px; background-color: #F5F7FA; border-radius: 4px 4px 0 0; color: #001F3F; min-height: 45px; font-family: 'Poppins', sans-serif; line-height: 1.4;">
@@ -625,10 +632,10 @@ const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) =>
         </div>
       </div>
     `;
-  }
+    }
 
-  return html;
-};
+    return html;
+  };
 
 
 
@@ -695,12 +702,12 @@ const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) =>
       {notification.show && (
         <div style={{
           ...styles.notification,
-          backgroundColor: notification.type === 'success' ? '#4CAF50' : 
-                         notification.type === 'error' ? '#FF6B6B' : 
-                         notification.type === 'warning' ? '#FF9800' : '#2196F3'
+          backgroundColor: notification.type === 'success' ? '#4CAF50' :
+            notification.type === 'error' ? '#FF6B6B' :
+              notification.type === 'warning' ? '#FF9800' : '#2196F3'
         }}>
           <span style={styles.notificationText}>{notification.message}</span>
-          <button 
+          <button
             onClick={() => setNotification({ message: "", type: "", show: false })}
             style={styles.notificationClose}
           >
@@ -796,7 +803,7 @@ const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) =>
             <table style={styles.table}>
               <thead>
                 <tr style={styles.tableHeaderRow}>
-                                    <th style={styles.tableHeader}>S.No</th>
+                  <th style={styles.tableHeader}>S.No</th>
                   <th style={styles.tableHeader}>Invoice No</th>
                   <th style={styles.tableHeader}>Date</th>
                   <th style={styles.tableHeader}>Client Name</th>
@@ -813,10 +820,10 @@ const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) =>
                     </td>
                   </tr>
                 ) : (
-                  filteredInvoices.map((invoice,index) => (
+                  filteredInvoices.map((invoice, index) => (
                     <tr key={invoice.id} style={styles.tableRow}>
-                       <td style={styles.tableCell}>
-                        <strong>{index+1}.</strong>
+                      <td style={styles.tableCell}>
+                        <strong>{index + 1}.</strong>
                       </td>
                       <td style={styles.tableCell}>
                         <strong>{invoice.invoiceNumber}</strong>
@@ -904,7 +911,7 @@ const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) =>
                       <strong>PO Number:</strong> {selectedInvoice.poNumber || "N/A"}
                     </div>
                     <div style={styles.detailItem}>
-                      <strong>Bill No:</strong> {selectedInvoice.BillNo || "N/A"}
+                      <strong>PO Number:</strong> {selectedInvoice.poNumber || "N/A"}
                     </div>
                     <div style={styles.detailItem}>
                       <strong>DC No:</strong> {selectedInvoice.DCNO || "N/A"}
@@ -1013,13 +1020,13 @@ const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) =>
                     <div style={styles.totalItem}>
                       <strong>SGST Amount:</strong> {formatCurrency(calculateInvoiceTotals(selectedInvoice).sgstAmount)}
                     </div>
-                    <div style={{...styles.totalItem, ...styles.grandTotal}}>
+                    <div style={{ ...styles.totalItem, ...styles.grandTotal }}>
                       <strong>Grand Total:</strong> {formatCurrency(calculateInvoiceTotals(selectedInvoice).total)}
                     </div>
                   </div>
                 </div>
               </div>
-              
+
               <div style={styles.modalActions}>
                 <button
                   onClick={() => handleDownloadPDF(selectedInvoice)}
@@ -1057,7 +1064,7 @@ const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) =>
             </div>
             <div style={styles.modalBody}>
               <p style={styles.confirmText}>
-                Are you sure you want to delete invoice <strong>{invoiceToDelete.invoiceNumber}</strong> 
+                Are you sure you want to delete invoice <strong>{invoiceToDelete.invoiceNumber}</strong>
                 for client <strong>{invoiceToDelete.clientName}</strong>?
               </p>
               <p style={styles.warningText}>
@@ -1088,7 +1095,7 @@ const generatePageHTML = (invoice, page, materialsPerPage, pageCount, totals) =>
 const styles = {
   container: {
     backgroundColor: "#FFFFFF",
-    minHeight: "100vh",
+    minHeight: "80vh",
     borderRadius: "30px",
     padding: "20px",
     fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
@@ -1136,9 +1143,9 @@ const styles = {
   },
   title: {
     color: "#001F3F",
-    margin: 0,
-    fontSize: "2rem",
-    fontWeight: "600",
+    margin: "0 10px 0 0",
+    fontSize: "1.5rem",
+    fontWeight: "700",
   },
   exportButton: {
     backgroundColor: "#4CAF50",

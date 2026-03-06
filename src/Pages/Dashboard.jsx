@@ -40,14 +40,18 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts';
-import { collection, onSnapshot, getDocs } from 'firebase/firestore';
+import {  onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from '../config';
+import { useCompany } from '../context/CompanyContext';
+import { getCompanyCollection } from '../utils/firestoreUtils';
 
-const StyledCard = styled(Card)(({ theme }) => ({
+// Styled components with Poppins font
+const StyledCard = styled(Card)(() => ({
   borderRadius: 12,
   boxShadow: '0 2px 12px rgba(0, 0, 0, 0.08)',
   backgroundColor: 'white',
   transition: 'transform 0.3s',
+  fontFamily: '"Poppins", sans-serif',
   '&:hover': {
     transform: 'translateY(-4px)',
   },
@@ -71,14 +75,40 @@ const StatCard = ({ title, value, icon, color, subtitle }) => (
           {icon}
         </Box>
         <Box flex={1}>
-          <Typography color="textSecondary" variant="body2" sx={{ opacity: 0.8, fontSize: '0.875rem' }}>
+          <Typography 
+            color="textSecondary" 
+            variant="body2" 
+            sx={{ 
+              opacity: 0.8, 
+              fontSize: '0.875rem',
+              fontFamily: '"Poppins", sans-serif',
+              fontWeight: 400
+            }}
+          >
             {title}
           </Typography>
-          <Typography variant="h5" fontWeight="bold" sx={{ color: '#001F3F' }}>
+          <Typography 
+            variant="h5" 
+            fontWeight="bold" 
+            sx={{ 
+              color: '#001F3F',
+              fontFamily: '"Poppins", sans-serif',
+              fontWeight: 600
+            }}
+          >
             {value}
           </Typography>
           {subtitle && (
-            <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 0.5 }}>
+            <Typography 
+              variant="caption" 
+              color="textSecondary" 
+              sx={{ 
+                display: 'block', 
+                mt: 0.5,
+                fontFamily: '"Poppins", sans-serif',
+                fontWeight: 400
+              }}
+            >
               {subtitle}
             </Typography>
           )}
@@ -89,6 +119,7 @@ const StatCard = ({ title, value, icon, color, subtitle }) => (
 );
 
 export default function Home() {
+  const { selectedCompany } = useCompany();
   const [loading, setLoading] = useState(true);
   const [materialsCount, setMaterialsCount] = useState(0);
   const [invoicesCount, setInvoicesCount] = useState(0);
@@ -101,15 +132,19 @@ export default function Home() {
   // Fetch all data from Firebase
   useEffect(() => {
     const fetchDashboardData = async () => {
+      if (!selectedCompany) return;
+
       try {
         setLoading(true);
 
         // Fetch materials count
-        const materialsSnapshot = await getDocs(collection(db, 'materials'));
+        const materialsRef = getCompanyCollection(db, selectedCompany.id, 'materials');
+        const materialsSnapshot = await getDocs(materialsRef);
         setMaterialsCount(materialsSnapshot.size);
 
         // Fetch invoices
-        const unsubscribe = onSnapshot(collection(db, 'invoices'), (snapshot) => {
+        const invoicesRef = getCompanyCollection(db, selectedCompany.id, 'invoices');
+        const unsubscribe = onSnapshot(invoicesRef, (snapshot) => {
           const invoices = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
@@ -128,10 +163,10 @@ export default function Home() {
 
           // Get recent 5 invoices
           const sortedInvoices = [...invoices].sort((a, b) => {
-            const dateA = a.timestamp ? new Date(a.timestamp) : 
-                         a.invoiceDate ? new Date(a.invoiceDate) : new Date(0);
-            const dateB = b.timestamp ? new Date(b.timestamp) : 
-                         b.invoiceDate ? new Date(b.invoiceDate) : new Date(0);
+            const dateA = a.timestamp ? new Date(a.timestamp) :
+              a.invoiceDate ? new Date(a.invoiceDate) : new Date(0);
+            const dateB = b.timestamp ? new Date(b.timestamp) :
+              b.invoiceDate ? new Date(b.invoiceDate) : new Date(0);
             return dateB - dateA;
           });
           setRecentInvoices(sortedInvoices.slice(0, 5));
@@ -144,7 +179,7 @@ export default function Home() {
           invoices.forEach(invoice => {
             // Get date from invoice
             let invoiceDate;
-            
+
             if (invoice.timestamp) {
               invoiceDate = new Date(invoice.timestamp);
             } else if (invoice.invoiceDate) {
@@ -215,7 +250,7 @@ export default function Home() {
     };
 
     fetchDashboardData();
-  }, []);
+  }, [selectedCompany]);
 
   const formatCurrency = (amount) => {
     if (!amount) return '₹ 0';
@@ -236,7 +271,7 @@ export default function Home() {
         year: 'numeric'
       });
     } catch (error) {
-      return dateValue;
+      console.log('Error formatting date:', error);
     }
   };
 
@@ -257,10 +292,10 @@ export default function Home() {
 
   if (loading) {
     return (
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
+      <Box sx={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
         minHeight: '60vh',
         backgroundColor: 'white',
         borderRadius: 2,
@@ -272,25 +307,42 @@ export default function Home() {
   }
 
   return (
-    <Box sx={{ 
-      backgroundColor: 'white', 
+    <Box sx={{
+      backgroundColor: 'white',
       borderRadius: 2,
       p: 3,
-      minHeight: '100vh'
+      minHeight: '100vh',
+      fontFamily: '"Poppins", sans-serif'
     }}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" fontWeight="bold" color="#001F3F" gutterBottom>
+        <Typography 
+          variant="h4" 
+          fontWeight="bold" 
+          color="#001F3F" 
+          gutterBottom
+          sx={{ 
+            fontFamily: '"Poppins", sans-serif',
+            fontWeight: 600
+          }}
+        >
           Dashboard Overview
         </Typography>
-        <Typography variant="body1" color="textSecondary">
+        <Typography 
+          variant="body1" 
+          color="textSecondary"
+          sx={{ 
+            fontFamily: '"Poppins", sans-serif',
+            fontWeight: 400
+          }}
+        >
           Real-time insights into your business operations
         </Typography>
       </Box>
 
-      {/* Stats Cards - Updated with Total Companies */}
+      {/* Stats Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}minWidth={'250px'}>
+        <Grid item xs={12} sm={6} md={3} minWidth={'250px'}>
           <StatCard
             title="Total Materials"
             value={materialsCount}
@@ -299,7 +351,7 @@ export default function Home() {
             subtitle="In inventory"
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}minWidth={'250px'}>
+        <Grid item xs={12} sm={6} md={3} minWidth={'250px'}>
           <StatCard
             title="Total Invoices"
             value={invoicesCount}
@@ -308,7 +360,7 @@ export default function Home() {
             subtitle="All time"
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}minWidth={'250px'}>
+        <Grid item xs={12} sm={6} md={3} minWidth={'250px'}>
           <StatCard
             title="Total Companies"
             value={uniqueCompaniesCount}
@@ -317,7 +369,7 @@ export default function Home() {
             subtitle="Clients served"
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}minWidth={'250px'}>
+        <Grid item xs={12} sm={6} md={3} minWidth={'250px'}>
           <StatCard
             title="Active Clients"
             value={topClients.length > 0 ? topClients.length : 0}
@@ -331,15 +383,30 @@ export default function Home() {
       {/* Charts Row */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {/* Daily Invoices Chart */}
-        <Grid item xs={12}minWidth={'1070px'}>
+        <Grid item xs={12} minWidth={'1070px'}>
           <StyledCard>
             <CardContent>
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
                 <Box>
-                  <Typography variant="h6" fontWeight="bold" color="#001F3F">
+                  <Typography 
+                    variant="h6" 
+                    fontWeight="bold" 
+                    color="#001F3F"
+                    sx={{ 
+                      fontFamily: '"Poppins", sans-serif',
+                      fontWeight: 600
+                    }}
+                  >
                     Daily Invoices Created
                   </Typography>
-                  <Typography variant="body2" color="textSecondary">
+                  <Typography 
+                    variant="body2" 
+                    color="textSecondary"
+                    sx={{ 
+                      fontFamily: '"Poppins", sans-serif',
+                      fontWeight: 400
+                    }}
+                  >
                     Invoices created per day (Last 7 days)
                   </Typography>
                 </Box>
@@ -347,7 +414,12 @@ export default function Home() {
                   icon={<CalendarIcon />}
                   label={`Total: ${invoicesCount}`}
                   size="small"
-                  sx={{ backgroundColor: '#001F3F', color: 'white', fontWeight: 600 }}
+                  sx={{ 
+                    backgroundColor: '#001F3F', 
+                    color: 'white', 
+                    fontWeight: 600,
+                    fontFamily: '"Poppins", sans-serif'
+                  }}
                 />
               </Box>
               <Box sx={{ height: 300 }}>
@@ -355,25 +427,33 @@ export default function Home() {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={dailyInvoiceData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
-                      <XAxis 
-                        dataKey="day" 
+                      <XAxis
+                        dataKey="day"
                         axisLine={false}
                         tickLine={false}
-                        tick={{ fill: '#666' }}
+                        tick={{ fill: '#666', fontFamily: '"Poppins", sans-serif' }}
                       />
-                      <YAxis 
+                      <YAxis
                         axisLine={false}
                         tickLine={false}
-                        tick={{ fill: '#666' }}
+                        tick={{ fill: '#666', fontFamily: '"Poppins", sans-serif' }}
                         allowDecimals={false}
                       />
-                      <Tooltip 
+                      <Tooltip
                         formatter={(value) => [`${value} invoices`, 'Count']}
-                        labelStyle={{ color: '#001F3F', fontWeight: 600 }}
-                        contentStyle={{ borderRadius: 8, border: '1px solid #e0e0e0' }}
+                        labelStyle={{ 
+                          color: '#001F3F', 
+                          fontWeight: 600,
+                          fontFamily: '"Poppins", sans-serif'
+                        }}
+                        contentStyle={{ 
+                          borderRadius: 8, 
+                          border: '1px solid #e0e0e0',
+                          fontFamily: '"Poppins", sans-serif'
+                        }}
                       />
-                      <Bar 
-                        dataKey="invoices" 
+                      <Bar
+                        dataKey="invoices"
                         radius={[6, 6, 0, 0]}
                         name="Number of Invoices"
                       >
@@ -384,19 +464,33 @@ export default function Home() {
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
-                  <Box sx={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
+                  <Box sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
                     justifyContent: 'center',
                     height: '100%',
                     color: '#999'
                   }}>
                     <ReceiptIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
-                    <Typography variant="body1" color="textSecondary">
+                    <Typography 
+                      variant="body1" 
+                      color="textSecondary"
+                      sx={{ 
+                        fontFamily: '"Poppins", sans-serif',
+                        fontWeight: 400
+                      }}
+                    >
                       No invoice data available
                     </Typography>
-                    <Typography variant="caption" color="textSecondary">
+                    <Typography 
+                      variant="caption" 
+                      color="textSecondary"
+                      sx={{ 
+                        fontFamily: '"Poppins", sans-serif',
+                        fontWeight: 400
+                      }}
+                    >
                       Create invoices to see data here
                     </Typography>
                   </Box>
@@ -404,7 +498,16 @@ export default function Home() {
               </Box>
               {invoiceDates.length > 0 && (
                 <Box sx={{ mt: 2 }}>
-                  <Typography variant="caption" color="textSecondary" display="block" gutterBottom>
+                  <Typography 
+                    variant="caption" 
+                    color="textSecondary" 
+                    display="block" 
+                    gutterBottom
+                    sx={{ 
+                      fontFamily: '"Poppins", sans-serif',
+                      fontWeight: 400
+                    }}
+                  >
                     Recent Invoice Dates:
                   </Typography>
                   <Box display="flex" flexWrap="wrap" gap={1}>
@@ -414,7 +517,10 @@ export default function Home() {
                         label={date}
                         size="small"
                         variant="outlined"
-                        sx={{ fontSize: '0.75rem' }}
+                        sx={{ 
+                          fontSize: '0.75rem',
+                          fontFamily: '"Poppins", sans-serif'
+                        }}
                       />
                     ))}
                   </Box>
@@ -428,50 +534,86 @@ export default function Home() {
       {/* Bottom Row */}
       <Grid container spacing={3}>
         {/* Top Clients by Invoice Count */}
-        <Grid item xs={12} md={6}minWidth={'450px'}>
+        <Grid item xs={12} md={6} minWidth={'450px'}>
           <StyledCard sx={{ height: '100%' }}>
             <CardContent>
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                <Typography variant="h6" fontWeight="bold" color="#001F3F">
+                <Typography 
+                  variant="h6" 
+                  fontWeight="bold" 
+                  color="#001F3F"
+                  sx={{ 
+                    fontFamily: '"Poppins", sans-serif',
+                    fontWeight: 600
+                  }}
+                >
                   Top Clients
                 </Typography>
                 <Chip
                   label={`${topClients.length} Clients`}
                   size="small"
-                  sx={{ backgroundColor: '#f5f5f5', fontWeight: 600 }}
+                  sx={{ 
+                    backgroundColor: '#f5f5f5', 
+                    fontWeight: 600,
+                    fontFamily: '"Poppins", sans-serif'
+                  }}
                 />
               </Box>
-              <Typography variant="body2" color="textSecondary" gutterBottom>
+              <Typography 
+                variant="body2" 
+                color="textSecondary" 
+                gutterBottom
+                sx={{ 
+                  fontFamily: '"Poppins", sans-serif',
+                  fontWeight: 400
+                }}
+              >
                 Clients with most invoices
               </Typography>
-              
+
               {topClients.length > 0 ? (
                 <List dense>
                   {topClients.map((client, index) => (
                     <React.Fragment key={client.name}>
                       <ListItem sx={{ px: 0, py: 1.5 }}>
                         <ListItemAvatar>
-                          <Avatar sx={{ 
-                            bgcolor: index === 0 ? '#FFD700' : 
-                                    index === 1 ? '#C0C0C0' : 
-                                    index === 2 ? '#CD7F32' : '#001F3F20',
+                          <Avatar sx={{
+                            bgcolor: index === 0 ? '#FFD700' :
+                              index === 1 ? '#C0C0C0' :
+                                index === 2 ? '#CD7F32' : '#001F3F20',
                             color: index < 3 ? '#001F3F' : '#666',
                             fontWeight: 600,
-                            fontSize: 14
+                            fontSize: 14,
+                            fontFamily: '"Poppins", sans-serif'
                           }}>
                             {index + 1}
                           </Avatar>
                         </ListItemAvatar>
                         <ListItemText
                           primary={
-                            <Typography variant="subtitle2" fontWeight={600} sx={{ color: '#001F3F' }}>
+                            <Typography 
+                              variant="subtitle2" 
+                              fontWeight={600} 
+                              sx={{ 
+                                color: '#001F3F',
+                                fontFamily: '"Poppins", sans-serif',
+                                fontWeight: 600
+                              }}
+                            >
                               {client.name}
                             </Typography>
                           }
                           secondary={
                             <Box display="flex" alignItems="center" gap={1}>
                               <ReceiptIcon sx={{ fontSize: 14, color: '#666' }} />
-                              <Typography variant="caption" color="textSecondary">
+                              <Typography 
+                                variant="caption" 
+                                color="textSecondary"
+                                sx={{ 
+                                  fontFamily: '"Poppins", sans-serif',
+                                  fontWeight: 400
+                                }}
+                              >
                                 {client.count} invoices
                               </Typography>
                             </Box>
@@ -480,11 +622,12 @@ export default function Home() {
                         <Chip
                           label={client.count}
                           size="small"
-                          sx={{ 
+                          sx={{
                             backgroundColor: '#001F3F',
                             color: 'white',
                             fontWeight: 600,
-                            minWidth: 40
+                            minWidth: 40,
+                            fontFamily: '"Poppins", sans-serif'
                           }}
                         />
                       </ListItem>
@@ -493,19 +636,33 @@ export default function Home() {
                   ))}
                 </List>
               ) : (
-                <Box sx={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  alignItems: 'center', 
+                <Box sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
                   justifyContent: 'center',
                   py: 6,
                   color: '#999'
                 }}>
                   <AccountCircleIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
-                  <Typography variant="body1" color="textSecondary">
+                  <Typography 
+                    variant="body1" 
+                    color="textSecondary"
+                    sx={{ 
+                      fontFamily: '"Poppins", sans-serif',
+                      fontWeight: 400
+                    }}
+                  >
                     No client data available
                   </Typography>
-                  <Typography variant="caption" color="textSecondary">
+                  <Typography 
+                    variant="caption" 
+                    color="textSecondary"
+                    sx={{ 
+                      fontFamily: '"Poppins", sans-serif',
+                      fontWeight: 400
+                    }}
+                  >
                     Create invoices to see client data
                   </Typography>
                 </Box>
@@ -515,40 +672,88 @@ export default function Home() {
         </Grid>
 
         {/* Recent Invoices */}
-        <Grid item xs={12} md={6}minWidth={'600px'}>
+        <Grid item xs={12} md={6} minWidth={'600px'}>
           <StyledCard sx={{ height: '100%' }}>
             <CardContent>
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                <Typography variant="h6" fontWeight="bold" color="#001F3F">
+                <Typography 
+                  variant="h6" 
+                  fontWeight="bold" 
+                  color="#001F3F"
+                  sx={{ 
+                    fontFamily: '"Poppins", sans-serif',
+                    fontWeight: 600
+                  }}
+                >
                   Recent Invoices
                 </Typography>
                 <Chip
                   label="Last 5"
                   size="small"
-                  sx={{ backgroundColor: '#f5f5f5', fontWeight: 600 }}
+                  sx={{ 
+                    backgroundColor: '#f5f5f5', 
+                    fontWeight: 600,
+                    fontFamily: '"Poppins", sans-serif'
+                  }}
                 />
               </Box>
-              <Typography variant="body2" color="textSecondary" gutterBottom>
+              <Typography 
+                variant="body2" 
+                color="textSecondary" 
+                gutterBottom
+                sx={{ 
+                  fontFamily: '"Poppins", sans-serif',
+                  fontWeight: 400
+                }}
+              >
                 Latest invoice transactions
               </Typography>
-              
+
               {recentInvoices.length > 0 ? (
                 <TableContainer>
                   <Table size="small">
                     <TableHead>
                       <TableRow sx={{ backgroundColor: '#001F3F' }}>
-                        <TableCell sx={{ fontWeight: 600, fontSize: '0.875rem',color:'white' }}>Client</TableCell>
-                        <TableCell sx={{ fontWeight: 600, fontSize: '0.875rem',color:'white' }} align="right">Amount</TableCell>
-                        <TableCell sx={{ fontWeight: 600, fontSize: '0.875rem',color:'white' }}>Invoice No</TableCell>
-                        <TableCell sx={{ fontWeight: 600, fontSize: '0.875rem',color:'white' }}>Date</TableCell>
+                        <TableCell sx={{ 
+                          fontWeight: 600, 
+                          fontSize: '0.875rem', 
+                          color: 'white',
+                          fontFamily: '"Poppins", sans-serif'
+                        }}>
+                          Client
+                        </TableCell>
+                        <TableCell sx={{ 
+                          fontWeight: 600, 
+                          fontSize: '0.875rem', 
+                          color: 'white',
+                          fontFamily: '"Poppins", sans-serif'
+                        }} align="right">
+                          Amount
+                        </TableCell>
+                        <TableCell sx={{ 
+                          fontWeight: 600, 
+                          fontSize: '0.875rem', 
+                          color: 'white',
+                          fontFamily: '"Poppins", sans-serif'
+                        }}>
+                          Invoice No
+                        </TableCell>
+                        <TableCell sx={{ 
+                          fontWeight: 600, 
+                          fontSize: '0.875rem', 
+                          color: 'white',
+                          fontFamily: '"Poppins", sans-serif'
+                        }}>
+                          Date
+                        </TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {recentInvoices.map((invoice) => (
-                        <TableRow 
+                        <TableRow
                           key={invoice.id}
                           hover
-                          sx={{ 
+                          sx={{
                             '&:last-child td, &:last-child th': { border: 0 },
                             '&:hover': { backgroundColor: '#f9f9f9' }
                           }}
@@ -556,13 +761,29 @@ export default function Home() {
                           <TableCell>
                             <Box display="flex" alignItems="center">
                               <AccountCircleIcon sx={{ color: '#666', mr: 1, fontSize: 18 }} />
-                              <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.875rem' }}>
+                              <Typography 
+                                variant="body2" 
+                                sx={{ 
+                                  fontWeight: 500, 
+                                  fontSize: '0.875rem',
+                                  fontFamily: '"Poppins", sans-serif',
+                                }}
+                              >
                                 {invoice.clientName || 'Unnamed Client'}
                               </Typography>
                             </Box>
                           </TableCell>
                           <TableCell align="right">
-                            <Typography variant="body2" fontWeight={600} sx={{ color: '#001F3F', fontSize: '0.875rem' }}>
+                            <Typography 
+                              variant="body2" 
+                              fontWeight={600} 
+                              sx={{ 
+                                color: '#001F3F', 
+                                fontSize: '0.875rem',
+                                fontFamily: '"Poppins", sans-serif',
+                                fontWeight: 600
+                              }}
+                            >
                               {formatCurrency(getInvoiceAmount(invoice))}
                             </Typography>
                           </TableCell>
@@ -575,12 +796,21 @@ export default function Home() {
                                 color: '#001F3F',
                                 fontWeight: 600,
                                 fontSize: '0.75rem',
-                                height: 24
+                                height: 24,
+                                fontFamily: '"Poppins", sans-serif'
                               }}
                             />
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" color="textSecondary" sx={{ fontSize: '0.875rem' }}>
+                            <Typography 
+                              variant="body2" 
+                              color="textSecondary" 
+                              sx={{ 
+                                fontSize: '0.875rem',
+                                fontFamily: '"Poppins", sans-serif',
+                                fontWeight: 400
+                              }}
+                            >
                               {formatDate(invoice.invoiceDate || invoice.timestamp)}
                             </Typography>
                           </TableCell>
@@ -590,19 +820,33 @@ export default function Home() {
                   </Table>
                 </TableContainer>
               ) : (
-                <Box sx={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  alignItems: 'center', 
+                <Box sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
                   justifyContent: 'center',
                   py: 6,
                   color: '#999'
                 }}>
                   <ReceiptIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
-                  <Typography variant="body1" color="textSecondary">
+                  <Typography 
+                    variant="body1" 
+                    color="textSecondary"
+                    sx={{ 
+                      fontFamily: '"Poppins", sans-serif',
+                      fontWeight: 400
+                    }}
+                  >
                     No recent invoices
                   </Typography>
-                  <Typography variant="caption" color="textSecondary">
+                  <Typography 
+                    variant="caption" 
+                    color="textSecondary"
+                    sx={{ 
+                      fontFamily: '"Poppins", sans-serif',
+                      fontWeight: 400
+                    }}
+                  >
                     Create your first invoice to get started
                   </Typography>
                 </Box>

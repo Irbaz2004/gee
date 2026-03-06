@@ -1,10 +1,12 @@
 // AdminData.jsx
 import React, { useState, useEffect } from "react";
-import { collection, addDoc, getDocs, query, orderBy, limit } from "firebase/firestore";
+import {  addDoc, getDocs, query, orderBy, limit } from "firebase/firestore";
 import { db } from "../config";
-import Logo from "../assets/Logo.png";
+import { useCompany } from "../context/CompanyContext";
+import { getCompanyCollection } from "../utils/firestoreUtils";
 
 const AdminData = () => {
+  const { selectedCompany } = useCompany();
   const [adminData, setAdminData] = useState({
     companyName: "",
     companyAddress: "",
@@ -14,6 +16,8 @@ const AdminData = () => {
     companyDescription: "",
   });
 
+  const [companyLogo, setCompanyLogo] = useState(null);
+  const [logoError, setLogoError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notification, setNotification] = useState({ message: "", type: "" });
@@ -25,18 +29,74 @@ const AdminData = () => {
     }, 3000);
   };
 
-  // Fetch existing admin data on component mount
+  // Function to get company logo path
+  const getCompanyLogoPath = async (companyName) => {
+    if (!companyName) return null;
+    
+    // Convert company name to filename format (lowercase, replace spaces with hyphens)
+    const fileName = companyName.toLowerCase().replace(/\s+/g, '-');
+    
+    // Try to import the logo dynamically
+    try {
+      const module = await import(`../assets/${fileName}.png`);
+      return module.default;
+    } catch (error) {
+      console.log(`Logo not found for ${companyName}, using default ${error}`);
+      return null;
+    }
+  };
+
+  // Load company logo when company data changes
   useEffect(() => {
-    fetchAdminData();
-  }, []);
+    if (adminData.companyName) {
+      loadCompanyLogo(adminData.companyName);
+    }
+  }, [adminData.companyName]);
+
+  const loadCompanyLogo = async (companyName) => {
+    try {
+      setLogoError(false);
+      const logoPath = await getCompanyLogoPath(companyName);
+      if (logoPath) {
+        setCompanyLogo(logoPath);
+      } else {
+        // Try with different extensions
+        const extensions = ['.png', '.jpg', '.jpeg', '.svg'];
+        for (const ext of extensions) {
+          try {
+            const module = await import(`../assets/${companyName.toLowerCase().replace(/\s+/g, '-')}${ext}`);
+            setCompanyLogo(module.default);
+            return;
+          } catch (e) {
+            // Continue trying other extensions
+            console.log(`Logo not found for ${companyName} with extension ${ext,e}`);
+          }
+        }
+        // If no logo found, set error
+        setLogoError(true);
+        setCompanyLogo(null);
+      }
+    } catch (error) {
+      console.log("Error loading logo:", error);
+      setLogoError(true);
+      setCompanyLogo(null);
+    }
+  };
+
+  // Fetch existing admin data on component mount or company change
+  useEffect(() => {
+    if (selectedCompany) {
+      fetchAdminData();
+    }
+  }, [selectedCompany]);
 
   const fetchAdminData = async () => {
     try {
       setLoading(true);
-      const adminCollection = collection(db, "adminSettings");
+      const adminCollection = getCompanyCollection(db, selectedCompany.id, "adminSettings");
       const q = query(adminCollection, orderBy("timestamp", "desc"), limit(1));
       const snapshot = await getDocs(q);
-      
+
       if (!snapshot.empty) {
         const latestData = snapshot.docs[0].data();
         setAdminData({
@@ -70,7 +130,7 @@ const AdminData = () => {
   const saveAdminData = async () => {
     try {
       setSaving(true);
-      
+
       // Validate required fields
       if (!adminData.companyName || !adminData.companyGSTIN) {
         showNotification("Company Name and GSTIN are required", "error");
@@ -82,9 +142,9 @@ const AdminData = () => {
         timestamp: new Date().toISOString(),
       };
 
-      const adminCollection = collection(db, "adminSettings");
+      const adminCollection = getCompanyCollection(db, selectedCompany.id, "adminSettings");
       await addDoc(adminCollection, adminDataWithTimestamp);
-      
+
       showNotification("Company details saved successfully!", "success");
     } catch (error) {
       console.error("Error saving admin data:", error);
@@ -100,13 +160,13 @@ const AdminData = () => {
       {notification.message && (
         <div style={{
           ...styles.notification,
-          backgroundColor: notification.type === "error" ? "#f44336" : 
-                          notification.type === "success" ? "#4caf50" : "#2196f3",
+          backgroundColor: notification.type === "error" ? "#f44336" :
+            notification.type === "success" ? "#4caf50" : "#2196f3",
         }}>
           <div style={styles.notificationContent}>
             <span style={{ fontWeight: "bold" }}>
-              {notification.type === "error" ? "Error" : 
-               notification.type === "success" ? "Success" : "Info"}
+              {notification.type === "error" ? "Error" :
+                notification.type === "success" ? "Success" : "Info"}
             </span>
             <span>{notification.message}</span>
           </div>
@@ -120,14 +180,28 @@ const AdminData = () => {
         <div style={styles.logoSection}>
           <h3 style={styles.sectionTitle}>Company Logo</h3>
           <div style={styles.logoContainer}>
-            <img src={Logo} alt="Company Logo" style={styles.logo} />
+            {companyLogo && !logoError ? (
+              <img 
+                src={companyLogo} 
+                alt={`${adminData.companyName || 'Company'} Logo`} 
+                style={styles.logo} 
+              />
+            ) : (
+              <div style={styles.noLogo}>
+                <span>No logo found for</span>
+                <strong>{adminData.companyName || 'selected company'}</strong>
+                <span style={styles.noLogoHint}>
+                  Place logo in: assets/{adminData.companyName?.toLowerCase().replace(/\s+/g, '-')}.png
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Company Details Form */}
         <div style={styles.formSection}>
           <h3 style={styles.sectionTitle}>Company Information</h3>
-          
+
           {loading ? (
             <div style={styles.loading}>Loading company details...</div>
           ) : (
@@ -217,7 +291,7 @@ const AdminData = () => {
             >
               {saving ? "Saving..." : "Save Company Details"}
             </button>
-            
+
             <button
               onClick={fetchAdminData}
               style={styles.refreshButton}
@@ -228,7 +302,13 @@ const AdminData = () => {
 
           <div style={styles.instructions}>
             <p><strong>Note:</strong> Fields marked with * are required.</p>
-            <p>Logo should be placed in <code>src/assets/Logo.png</code></p>
+            <p><strong>Logo naming convention:</strong></p>
+            <ul style={styles.instructionList}>
+              <li>Place logos in: <code>src/assets/</code></li>
+              <li>Name format: company-name.png (lowercase, hyphens for spaces)</li>
+              <li>Example: For "ABC Company" → <code>abc-company.png</code></li>
+              <li>Supported formats: PNG, JPG, JPEG, SVG</li>
+            </ul>
             <p>This data will be used in invoice generation</p>
           </div>
         </div>
@@ -280,20 +360,44 @@ const styles = {
   },
   logoContainer: {
     textAlign: "center",
+    minHeight: "200px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
   logo: {
-    width: "200px",
+    maxWidth: "200px",
+    maxHeight: "200px",
+    width: "auto",
     height: "auto",
     marginBottom: "15px",
     border: "1px solid #ddd",
     borderRadius: "5px",
     padding: "10px",
     backgroundColor: "white",
+    objectFit: "contain",
   },
-  logoNote: {
-    fontSize: "0.9rem",
+  noLogo: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    padding: "20px",
+    backgroundColor: "#f5f5f5",
+    borderRadius: "5px",
     color: "#666",
-    fontStyle: "italic",
+    fontSize: "0.9rem",
+  },
+  noLogoHint: {
+    fontSize: "0.8rem",
+    color: "#999",
+    marginTop: "10px",
+    fontFamily: "monospace",
+  },
+  instructionList: {
+    textAlign: "left",
+    marginTop: "5px",
+    marginBottom: "10px",
+    paddingLeft: "20px",
   },
   formSection: {
     backgroundColor: "#F8FAFF",
@@ -408,33 +512,5 @@ const styles = {
     color: "#666",
   },
 };
-
-// Add hover effects
-styles.saveButton[':hover'] = {
-  backgroundColor: "#003366",
-  transform: "translateY(-2px)",
-  boxShadow: "0 4px 12px rgba(0, 31, 63, 0.2)",
-};
-
-styles.refreshButton[':hover'] = {
-  backgroundColor: "#45a049",
-  transform: "translateY(-2px)",
-  boxShadow: "0 4px 12px rgba(76, 175, 80, 0.2)",
-};
-
-styles.input[':hover'] = {
-  outline: "none",
-  borderColor: "#0056b3",
-  boxShadow: "0 0 0 3px rgba(0, 31, 63, 0.1)",
-};
-
-styles.input[':focus'] = {
-  outline: "none",
-  borderColor: "#0056b3",
-  boxShadow: "0 0 0 3px rgba(0, 31, 63, 0.1)",
-};
-
-styles.textarea[':hover'] = styles.input[':hover'];
-styles.textarea[':focus'] = styles.input[':focus'];
 
 export default AdminData;

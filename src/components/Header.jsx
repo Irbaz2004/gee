@@ -17,9 +17,11 @@ import {
   Person as PersonIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../Auth/authcontext';
+import { useCompany } from '../context/CompanyContext';
 
 const Header = () => {
   const { currentUser, logout } = useAuth();
+  const { selectedCompany, clearCompany } = useCompany();
   const [anchorEl, setAnchorEl] = useState(null);
   const [currentPage, setCurrentPage] = useState('');
   const location = useLocation();
@@ -37,18 +39,28 @@ const Header = () => {
     handleMenuClose();
   };
 
+  const handleSwitchCompany = () => {
+    clearCompany();
+    handleMenuClose();
+    // Navigation to /select-company will happen automatically via RequireCompany or App.jsx logic if we trigger a state change, 
+    // but explicit navigation is safer if clearCompany() doesn't auto-redirect immediately.
+    // However, since clearCompany sets selectedCompany to null, RequireCompany (if wrapping current route) will trigger.
+    // But Header is outside RequireCompany? No, DashboardLayout is wrapped.
+    // Actually, DashboardLayout is inside RequireCompany. So setting it to null will trigger Navigate to /select-company.
+  };
+
   // Get current time, date and greeting
   const now = new Date();
-  const time = now.toLocaleTimeString('en-US', { 
-    hour: 'numeric', 
+  const time = now.toLocaleTimeString('en-US', {
+    hour: 'numeric',
     minute: '2-digit',
-    hour12: true 
+    hour12: true
   });
-  const day = now.toLocaleDateString('en-US', { 
-    weekday: 'long' 
+  const day = now.toLocaleDateString('en-US', {
+    weekday: 'long'
   });
-  const date = now.toLocaleDateString('en-US', { 
-    month: 'short', 
+  const date = now.toLocaleDateString('en-US', {
+    month: 'short',
     day: 'numeric',
     year: 'numeric'
   });
@@ -65,21 +77,21 @@ const Header = () => {
   // Function to format page name from URL path
   const formatPageName = (pathname) => {
     if (pathname === '/') return 'Dashboard';
-    
+
     // Remove leading slash and split by slashes
     const path = pathname.substring(1);
     if (!path) return 'Dashboard';
-    
+
     // Split by slashes and take the first part
     const segments = path.split('/');
     const mainSegment = segments[0];
-    
+
     // Format the page name
     const formattedName = mainSegment
       .split('-')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
-    
+
     // Handle common page names
     const pageNames = {
       'dashboard': 'Dashboard',
@@ -95,7 +107,7 @@ const Header = () => {
       'forgot-password': 'Forgot Password',
       'reset-password': 'Reset Password',
     };
-    
+
     return pageNames[mainSegment.toLowerCase()] || formattedName || 'Page';
   };
 
@@ -116,52 +128,52 @@ const Header = () => {
         display: 'flex',
       }}
     >
-      <Toolbar sx={{ 
+      <Toolbar sx={{
         minHeight: { xs: 64, sm: 72 },
         justifyContent: 'space-between',
       }}>
         {/* Left Section: Brand Name + Current Page */}
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
+        <Box sx={{
+          display: 'flex',
+          alignItems: 'center',
           flexGrow: 1,
           gap: 3
         }}>
           {/* Brand Name with Border */}
-          <Box sx={{ 
+          <Box sx={{
             textAlign: 'left',
-            borderRight: '4px solid #001F3F', 
+            borderRight: '4px solid #001F3F',
             pr: 3,
             minWidth: 220
           }}>
-            <Typography 
-              variant="h5" 
-              component="div" 
+            <Typography
+              variant="h5"
+              component="div"
               fontWeight={700}
               color="#001F3F"
               lineHeight={1.1}
-              fontSize={28}
+              fontSize={16}
             >
-              Galaxy
+              {selectedCompany ? selectedCompany.name : 'Galaxy'}
             </Typography>
-            <Typography 
-              variant="body2" 
+            <Typography
+              variant="body2"
               color="text.secondary"
-              fontSize={14}
+              fontSize={12}
               fontWeight={500}
             >
-              Electricals & Electronics
+              {selectedCompany ? 'Workspace' : 'Electricals & Electronics'}
             </Typography>
           </Box>
 
           {/* Current Page Name */}
-          <Box sx={{ 
+          <Box sx={{
             display: 'flex',
             alignItems: 'center',
             minHeight: 60
           }}>
-            <Typography 
-              variant="h6" 
+            <Typography
+              variant="h6"
               component="div"
               fontWeight={600}
               color="#001F3F"
@@ -186,17 +198,17 @@ const Header = () => {
         </Box>
 
         {/* Right Section: Time, Date, Greeting, User Avatar */}
-        <Box sx={{ 
-          display: 'flex', 
-          flexDirection: 'row', 
-          alignItems: 'center', 
+        <Box sx={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
           gap: 2
         }}>
           {/* Time */}
           <Box sx={{ textAlign: 'center', minWidth: 80 }}>
-            <Typography 
-              variant="body2" 
-              color="text.secondary" 
+            <Typography
+              variant="body2"
+              color="text.secondary"
               fontSize={17}
               fontWeight={500}
             >
@@ -206,10 +218,10 @@ const Header = () => {
 
           {/* Day & Date */}
           <Box sx={{ textAlign: 'center', minWidth: 140 }}>
-            <Typography 
-              variant="body2" 
-              color="#001F3F" 
-              fontWeight={500} 
+            <Typography
+              variant="body2"
+              color="#001F3F"
+              fontWeight={500}
               fontSize={17}
             >
               {day.slice(0, 3)}, {date}
@@ -218,10 +230,10 @@ const Header = () => {
 
           {/* Greeting */}
           <Box sx={{ textAlign: 'center', minWidth: 120 }}>
-            <Typography 
-              variant="h6" 
-              color="#001F3F" 
-              fontWeight={600} 
+            <Typography
+              variant="h6"
+              color="#001F3F"
+              fontWeight={600}
               fontSize={17}
             >
               {greeting}
@@ -276,8 +288,16 @@ const Header = () => {
                 Administrator
               </Typography>
             </Box>
+
           </MenuItem>
-          
+
+          <MenuItem onClick={handleSwitchCompany} sx={{ py: 1.5 }}>
+            <ListItemIcon>
+              <PersonIcon fontSize="small" sx={{ color: '#001F3F' }} />
+            </ListItemIcon>
+            <Typography color="#001F3F">Switch Company</Typography>
+          </MenuItem>
+
           <MenuItem onClick={handleLogout} sx={{ py: 1.5 }}>
             <ListItemIcon>
               <LogoutIcon fontSize="small" sx={{ color: '#001F3F' }} />
@@ -286,7 +306,7 @@ const Header = () => {
           </MenuItem>
         </Menu>
       </Toolbar>
-    </AppBar>
+    </AppBar >
   );
 };
 

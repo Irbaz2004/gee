@@ -18,15 +18,15 @@ import {
   ShoppingCart as OrdersIcon,
   Person as UsersIcon,
   Inventory as ProductsIcon,
-  Help as HelpIcon
-  
+  Help as HelpIcon,
+  ReceiptLong as LedgerIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { useAuth } from '../Auth/authcontext';
 
 const drawerWidth = 280;
 
-const StyledDrawer = styled(Drawer)(({ theme }) => ({
+const StyledDrawer = styled(Drawer)(() => ({
   width: drawerWidth,
   flexShrink: 0,
   '& .MuiDrawer-paper': {
@@ -37,6 +37,7 @@ const StyledDrawer = styled(Drawer)(({ theme }) => ({
     backgroundColor: 'white',
     display: 'flex',
     flexDirection: 'column',
+    fontFamily: 'Poppins, sans-serif', // Add Poppins to drawer paper
   },
 }));
 
@@ -63,12 +64,13 @@ const menuItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
   { text: 'Generate Invoice', icon: <AnalyticsIcon />, path: '/generate-invoice' },
   { text: 'Material', icon: <OrdersIcon />, path: '/material' },
+  { text: 'Clients', icon: <UsersIcon />, path: '/clients' },
   { text: 'View Invoice', icon: <ProductsIcon />, path: '/view-invoice' },
+  { text: 'Ledger', icon: <LedgerIcon />, path: '/ledger' },
   { text: 'Admin Data', icon: <UsersIcon />, path: '/admin-data' },
-  
 ];
 
-const Sidebar = ({ open, onClose }) => {
+const Sidebar = ({ open }) => {
   const { currentUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -96,10 +98,11 @@ const Sidebar = ({ open, onClose }) => {
     >
       {/* Main Navigation */}
       <Box sx={{ flexGrow: 1, overflow: 'auto', py: 2, mt: 8, backgroundColor: '#ffffff' }}>
+
         <List sx={{ px: 1 }}>
           {menuItems.map((item) => {
             const active = isActive(item.path);
-            
+
             return (
               <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
                 <ListItemButton
@@ -140,30 +143,31 @@ const Sidebar = ({ open, onClose }) => {
                       }}
                     />
                   )}
-                  
+
                   <ListItemIcon
                     sx={{
                       minWidth: 40,
                       color: active ? '#001F3F' : 'text.secondary',
                       transition: 'color 0.2s ease-in-out',
                       '& svg': {
-                        fontSize: active ? '1.3rem' : '1.25rem',
+                        fontSize: '1.25rem', // Constant icon size
                       }
                     }}
                   >
                     {item.icon}
                   </ListItemIcon>
-                  
+
                   <ListItemText
                     primary={item.text}
                     primaryTypographyProps={{
-                      fontWeight: active ? 700 : 500,
+                      fontFamily: 'Poppins, sans-serif', // Add Poppins font
+                      fontWeight: 400, // Constant font weight
+                      fontSize: '0.9rem', // Constant font size
+                      letterSpacing: '0.2px',
                       color: active ? '#001F3F' : 'text.primary',
-                      fontSize: active ? '0.95rem' : '0.9rem',
-                      letterSpacing: active ? '0.3px' : '0.2px',
                     }}
                   />
-                  
+
                   {/* Active page indicator dot */}
                   {active && (
                     <Box
@@ -204,16 +208,22 @@ const Sidebar = ({ open, onClose }) => {
           <Box sx={{ textAlign: 'left' }}>
             <Typography
               variant="body2"
-              fontWeight={600}
+              fontWeight={500} // Changed from 600 to 500
               color="#001F3F"
-              sx={{ mb: 0.5 }}
+              sx={{ 
+                mb: 0.5,
+                fontFamily: 'Poppins, sans-serif' // Add Poppins
+              }}
             >
               {currentUser?.displayName || 'Admin User'}
             </Typography>
             <Typography
               variant="caption"
               color="text.secondary"
-              fontSize={11}
+              sx={{ 
+                fontSize: 11,
+                fontFamily: 'Poppins, sans-serif' // Add Poppins
+              }}
             >
               {currentUser?.email || 'admin@galaxy.com'}
             </Typography>
