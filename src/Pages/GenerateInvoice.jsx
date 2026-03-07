@@ -767,7 +767,7 @@ const InvoiceGenerator = () => {
       const totals = calculateTotals();
 
       // Determine theme color based on company
-      const themeColor = isFaizanCompany() ? "#4CAF50" : "#001F3F";
+      const themeColor = isFaizanCompany() ? "#302c3a" : "#001F3F";
       const secondaryColor = isFaizanCompany() ? "#E8F5E9" : "#F5F7FA";
 
       // Wait for images to load
