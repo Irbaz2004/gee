@@ -1457,18 +1457,7 @@ const InvoiceGenerator = () => {
               readOnly
               title="Auto-generated invoice number"
             />
-            <button
-              onClick={resetInvoiceNumber}
-              style={{
-                ...styles.navButton,
-                backgroundColor: "#FFA500",
-                width: "auto",
-                padding: "12px 20px",
-                whiteSpace: "nowrap"
-              }}
-            >
-              Reset Number
-            </button>
+           
           </div>
           <small style={styles.helpText}>Auto-generated</small>
         </div>
