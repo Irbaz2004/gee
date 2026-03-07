@@ -16,7 +16,7 @@
     "@mui/icons-material": "^7.3.7",
     "@mui/material": "^7.3.7",
     "@mui/x-date-pickers": "^8.27.2",
-    "date-fns": "^2.30.0",
+    "date-fns": "^4.1.0",
     "firebase": "^12.8.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.0.0",
