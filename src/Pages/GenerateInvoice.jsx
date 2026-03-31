@@ -469,7 +469,7 @@ const InvoiceGenerator = () => {
   }, []);
 
   const handleMaterialChange = useCallback((e) => {
-    const { name, value, type } = e.target;
+    const { name, value } = e.target;
     
     let processedValue = value;
     
@@ -493,7 +493,7 @@ const InvoiceGenerator = () => {
   }, []);
 
   const handleAdditionalServiceChange = useCallback((e) => {
-    const { name, value, type } = e.target;
+    const { name, value } = e.target;
     
     let processedValue = value;
     
@@ -880,7 +880,7 @@ const InvoiceGenerator = () => {
               <th style="border: 1px solid ${borderColor}; padding: 6px 4px; width: 8%; font-size: 11px; color: ${maroon}; font-weight: 700;">Qty.</th>
               <th style="border: 1px solid ${borderColor}; padding: 6px 4px; width: 13%; font-size: 11px; color: ${maroon}; font-weight: 700;">Rate (₹)</th>
               <th style="border: 1px solid ${borderColor}; padding: 6px 4px; width: 13%; font-size: 11px; color: ${maroon}; font-weight: 700;">Amount (₹)</th>
-              </table>
+             </tr>
           </thead>
           <tbody>
       `;
@@ -892,16 +892,16 @@ const InvoiceGenerator = () => {
         const material = formData.materials[i];
         const desc = material.description;
         const truncDesc = desc.length > 80 ? desc.substring(0, 80) + '...' : desc;
-        const bgColor = i % 2 === 0 ? '#F9FAFB' : 'white';
+        // White background for all rows, no horizontal border
         tableHtml += `
-          <tr style="height: 30px; background-color: ${bgColor};">
-            <td style="border: 1px solid ${borderColor}; padding: 5px 4px; text-align: center; font-size: 11px; vertical-align: middle;">${i + 1}</td>
-            <td style="border: 1px solid ${borderColor}; padding: 5px 4px; font-size: 11px; vertical-align: middle;" title="${desc}">${truncDesc}</td>
-            <td style="border: 1px solid ${borderColor}; padding: 5px 4px; text-align: center; font-size: 11px; vertical-align: middle;">${material.hsn}</td>
-            <td style="border: 1px solid ${borderColor}; padding: 5px 4px; text-align: center; font-size: 11px; vertical-align: middle;">${material.quantity}</td>
-            <td style="border: 1px solid ${borderColor}; padding: 5px 4px; text-align: right; font-size: 11px; vertical-align: middle;">${formatNumber(material.rate)}</td>
-            <td style="border: 1px solid ${borderColor}; padding: 5px 4px; text-align: right; font-weight: bold; font-size: 11px; vertical-align: middle;">${formatNumber(material.amount)}</td>
-            </tr>
+          <tr style="height: 30px; background-color: white;">
+            <td style="border-left: 1px solid ${borderColor}; border-right: 1px solid ${borderColor}; padding: 5px 4px; text-align: center; font-size: 11px; vertical-align: middle;">${i + 1}</td>
+            <td style="border-left: 1px solid ${borderColor}; border-right: 1px solid ${borderColor}; padding: 5px 4px; font-size: 11px; vertical-align: middle;" title="${desc}">${truncDesc}</td>
+            <td style="border-left: 1px solid ${borderColor}; border-right: 1px solid ${borderColor}; padding: 5px 4px; text-align: center; font-size: 11px; vertical-align: middle;">${material.hsn}</td>
+            <td style="border-left: 1px solid ${borderColor}; border-right: 1px solid ${borderColor}; padding: 5px 4px; text-align: center; font-size: 11px; vertical-align: middle;">${material.quantity}</td>
+            <td style="border-left: 1px solid ${borderColor}; border-right: 1px solid ${borderColor}; padding: 5px 4px; text-align: right; font-size: 11px; vertical-align: middle;">${formatNumber(material.rate)}</td>
+            <td style="border-left: 1px solid ${borderColor}; border-right: 1px solid ${borderColor}; padding: 5px 4px; text-align: right; font-weight: bold; font-size: 11px; vertical-align: middle;">${formatNumber(material.amount)}</td>
+          </tr>
         `;
       }
 
@@ -909,16 +909,16 @@ const InvoiceGenerator = () => {
       const remainingRows = perPage - currentRows;
 
       for (let i = 0; i < remainingRows; i++) {
-        const bgColor = (endIdx + i) % 2 === 0 ? '#F9FAFB' : 'white';
+        // White background for all empty rows
         tableHtml += `
-          <tr style="height: 30px; background-color: ${bgColor};">
-            <td style="border: 1px solid ${borderColor}; padding: 5px 4px; font-size: 11px;">${endIdx + i + 1}</td>
-            <td style="border: 1px solid ${borderColor}; padding: 5px 4px;"></td>
-            <td style="border: 1px solid ${borderColor}; padding: 5px 4px;"></td>
-            <td style="border: 1px solid ${borderColor}; padding: 5px 4px;"></td>
-            <td style="border: 1px solid ${borderColor}; padding: 5px 4px;"></td>
-            <td style="border: 1px solid ${borderColor}; padding: 5px 4px;"></td>
-           </tr>
+          <tr style="height: 30px; background-color: white;">
+            <td style="border-left: 1px solid ${borderColor}; border-right: 1px solid ${borderColor}; padding: 5px 4px; font-size: 11px;">${endIdx + i + 1}</td>
+            <td style="border-left: 1px solid ${borderColor}; border-right: 1px solid ${borderColor}; padding: 5px 4px;"></td>
+            <td style="border-left: 1px solid ${borderColor}; border-right: 1px solid ${borderColor}; padding: 5px 4px;"></td>
+            <td style="border-left: 1px solid ${borderColor}; border-right: 1px solid ${borderColor}; padding: 5px 4px;"></td>
+            <td style="border-left: 1px solid ${borderColor}; border-right: 1px solid ${borderColor}; padding: 5px 4px;"></td>
+            <td style="border-left: 1px solid ${borderColor}; border-right: 1px solid ${borderColor}; padding: 5px 4px;"></td>
+          </tr>
         `;
       }
 
@@ -927,16 +927,16 @@ const InvoiceGenerator = () => {
           tableHtml += `
             <tr style="background-color: ${maroon};">
               <td colspan="6" style="border: 1px solid ${borderColor}; padding: 6px 4px; font-weight: bold; font-size: 11px; color: white;">Additional Services (Excluding GST)</td>
-             </tr>
+            </tr>
           `;
           formData.additionalServices.forEach((service, index) => {
-            const bgColor = index % 2 === 0 ? '#FFF8E1' : '#FFF3E0';
+            // White background for service rows
             tableHtml += `
-              <tr style="background-color: ${bgColor}; height: 30px;">
-                <td style="border: 1px solid ${borderColor}; padding: 5px 4px; text-align: center; font-size: 11px;">${index + 1}</td>
-                <td colspan="4" style="border: 1px solid ${borderColor}; padding: 5px 4px; font-size: 11px;">${service.description}</td>
-                <td style="border: 1px solid ${borderColor}; padding: 5px 4px; text-align: right; font-weight: bold; font-size: 11px;">${formatNumber(service.amount)}</td>
-               </tr>
+              <tr style="background-color: white; height: 30px;">
+                <td style="border-left: 1px solid ${borderColor}; border-right: 1px solid ${borderColor}; padding: 5px 4px; text-align: center; font-size: 11px;">${index + 1}</td>
+                <td colspan="4" style="border-left: 1px solid ${borderColor}; border-right: 1px solid ${borderColor}; padding: 5px 4px; font-size: 11px;">${service.description}</td>
+                <td style="border-left: 1px solid ${borderColor}; border-right: 1px solid ${borderColor}; padding: 5px 4px; text-align: right; font-weight: bold; font-size: 11px;">${formatNumber(service.amount)}</td>
+              </tr>
             `;
           });
         }
@@ -945,7 +945,7 @@ const InvoiceGenerator = () => {
           <tr style="background-color: #F9FAFB;">
             <td colspan="5" style="border: 1px solid ${borderColor}; padding: 6px 4px; text-align: right; font-weight: bold; font-size: 11px; color: ${maroon};">Sub Total:</td>
             <td style="border: 1px solid ${borderColor}; padding: 6px 4px; font-weight: bold; font-size: 11px; text-align: right; color: ${maroon};">₹ ${formatNumber(totals.subTotal)}</td>
-           </tr>
+          </tr>
         `;
 
         if (gstType === "GST") {
@@ -953,18 +953,18 @@ const InvoiceGenerator = () => {
             <tr style="background-color: white;">
               <td colspan="5" style="border: 1px solid ${borderColor}; padding: 6px 4px; text-align: right; font-weight: bold; font-size: 11px; color: ${maroon};">CGST (${formData.cgstPercentage}%):</td>
               <td style="border: 1px solid ${borderColor}; padding: 6px 4px; font-weight: bold; font-size: 11px; text-align: right; color: ${maroon};">₹ ${formatNumber(totals.cgstAmount)}</td>
-             </tr>
+            </tr>
             <tr style="background-color: #F9FAFB;">
               <td colspan="5" style="border: 1px solid ${borderColor}; padding: 6px 4px; text-align: right; font-weight: bold; font-size: 11px; color: ${maroon};">SGST (${formData.sgstPercentage}%):</td>
               <td style="border: 1px solid ${borderColor}; padding: 6px 4px; font-weight: bold; font-size: 11px; text-align: right; color: ${maroon};">₹ ${formatNumber(totals.sgstAmount)}</td>
-             </tr>
+            </tr>
           `;
         } else {
           tableHtml += `
             <tr style="background-color: white;">
               <td colspan="5" style="border: 1px solid ${borderColor}; padding: 6px 4px; text-align: right; font-weight: bold; font-size: 11px; color: ${maroon};">IGST (${igstPercentage}%):</td>
               <td style="border: 1px solid ${borderColor}; padding: 6px 4px; font-weight: bold; font-size: 11px; text-align: right; color: ${maroon};">₹ ${formatNumber(totals.igstAmount)}</td>
-             </tr>
+            </tr>
           `;
         }
 
@@ -972,15 +972,15 @@ const InvoiceGenerator = () => {
           <tr style="background-color: #F3F4F6;">
             <td colspan="5" style="border: 1px solid ${borderColor}; padding: 6px 4px; text-align: right; font-weight: bold; font-size: 11px; color: ${maroon};">Round Off:</td>
             <td style="border: 1px solid ${borderColor}; padding: 6px 4px; font-weight: bold; font-size: 11px; text-align: right; color: ${maroon};">₹ ${totals.roundOff > 0 ? '+' : ''}${formatNumberWithDecimal(totals.roundOff)}</td>
-           </tr>
-          <tr style="background-color: ${maroon};">
-            <td colspan="5" style="border: 1px solid ${maroon}; padding: 8px 4px; text-align: right; font-weight: bold; font-size: 12px; color: white;">GRAND TOTAL:</td>
-            <td style="border: 1px solid ${maroon}; padding: 8px 4px; font-weight: bold; font-size: 12px; text-align: right; color: white;">₹ ${formatNumber(totals.grandTotalWithRoundOff)}</td>
-           </tr>
+          </tr>
+          <tr style="background-color: white;">
+            <td colspan="5" style="border: 1px solid ${borderColor}; padding: 8px 4px; text-align: right; font-weight: bold; font-size: 12px; color: ${maroon}; background-color: white;">GRAND TOTAL:</td>
+            <td style="border: 1px solid ${borderColor}; padding: 8px 4px; font-weight: bold; font-size: 12px; text-align: right; color: ${maroon}; background-color: white;">₹ ${formatNumber(totals.grandTotalWithRoundOff)}</td>
+          </tr>
         `;
       }
 
-      tableHtml += `</tbody></table>`;
+      tableHtml += `</tbody>`;
       return tableHtml;
     };
 
@@ -1008,7 +1008,7 @@ const InvoiceGenerator = () => {
               <div style="font-size: 9px; color: #6B7280; position: absolute; bottom: 12px; right: 12px; text-align: right;">Authorized Signatory</div>
             </div>
           </div>
-          <div style="border: 1px solid ${borderColor}; border-top: none; padding: 5px; text-align: center; font-size: 9px; background-color: ${maroon}; color: white;">
+          <div style="border: 1px solid ${borderColor}; border-top: none; padding: 5px; text-align: center; font-size: 9px; background-color: white; color: ${maroon};">
             SUBJECT TO ${(formData.companyState || '').toUpperCase()} JURISDICTION | This is a Computer Generated Invoice
           </div>
         </div>
@@ -1096,14 +1096,14 @@ const InvoiceGenerator = () => {
         <div style="padding: 0;">
           <table style="width: 100%; border-collapse: collapse; font-size: 10px; font-family: 'Poppins', sans-serif; table-layout: fixed;">
             <thead>
-              <tr style="background-color: ${navyBlue};">
-                <th style="padding: 6px 4px; text-align: left; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: white; font-weight: 600; width: 4%; border-right: 1px solid ${borderColor};">No.</th>
-                <th style="padding: 6px 4px; text-align: left; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: white; font-weight: 600; width: 52%; border-right: 1px solid ${borderColor};">Description</th>
-                <th style="padding: 6px 4px; text-align: center; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: white; font-weight: 600; width: 10%; border-right: 1px solid ${borderColor};">HSN/SAC</th>
-                <th style="padding: 6px 4px; text-align: center; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: white; font-weight: 600; width: 8%; border-right: 1px solid ${borderColor};">Qty</th>
-                <th style="padding: 6px 4px; text-align: right; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: white; font-weight: 600; width: 13%; border-right: 1px solid ${borderColor};">Rate (₹)</th>
-                <th style="padding: 6px 4px; text-align: right; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: white; font-weight: 600; width: 13%;">Amount (₹)</th>
-               </tr>
+              <tr style="background-color: white;">
+                <th style="padding: 6px 4px; text-align: left; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: ${navyBlue}; font-weight: 600; width: 4%; border-right: 1px solid ${borderColor}; border-bottom: 1px solid ${borderColor};">No.</th>
+                <th style="padding: 6px 4px; text-align: left; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: ${navyBlue}; font-weight: 600; width: 52%; border-right: 1px solid ${borderColor}; border-bottom: 1px solid ${borderColor};">Description</th>
+                <th style="padding: 6px 4px; text-align: center; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: ${navyBlue}; font-weight: 600; width: 10%; border-right: 1px solid ${borderColor}; border-bottom: 1px solid ${borderColor};">HSN/SAC</th>
+                <th style="padding: 6px 4px; text-align: center; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: ${navyBlue}; font-weight: 600; width: 8%; border-right: 1px solid ${borderColor}; border-bottom: 1px solid ${borderColor};">Qty</th>
+                <th style="padding: 6px 4px; text-align: right; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: ${navyBlue}; font-weight: 600; width: 13%; border-right: 1px solid ${borderColor}; border-bottom: 1px solid ${borderColor};">Rate (₹)</th>
+                <th style="padding: 6px 4px; text-align: right; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: ${navyBlue}; font-weight: 600; width: 13%; border-bottom: 1px solid ${borderColor};">Amount (₹)</th>
+              </tr>
             </thead>
             <tbody>
       `;
@@ -1115,17 +1115,16 @@ const InvoiceGenerator = () => {
         const material = formData.materials[i];
         const desc = material.description;
         const truncDesc = desc.length > 80 ? desc.substring(0, 80) + '...' : desc;
-        const isEven = i % 2 === 0;
-        const bgColor = isEven ? 'white' : lightBg;
+        // White background for all rows, no horizontal border
         tableHtml += `
-          <tr style="background-color: ${bgColor}; border-bottom: 1px solid ${borderColor}; height: 30px;">
+          <tr style="background-color: white; height: 30px;">
             <td style="padding: 5px 4px; text-align: center; color: ${textColor}; font-size: 10px; border-right: 1px solid ${borderColor};">${i + 1}</td>
             <td style="padding: 5px 4px; color: ${textColor}; font-size: 10px; border-right: 1px solid ${borderColor};" title="${desc}">${truncDesc}</td>
             <td style="padding: 5px 4px; text-align: center; color: ${textColor}; font-size: 10px; border-right: 1px solid ${borderColor};">${material.hsn}</td>
             <td style="padding: 5px 4px; text-align: center; color: ${textColor}; font-size: 10px; border-right: 1px solid ${borderColor};">${material.quantity}</td>
             <td style="padding: 5px 4px; text-align: right; color: ${textColor}; font-size: 10px; border-right: 1px solid ${borderColor};">${formatNumber(material.rate)}</td>
             <td style="padding: 5px 4px; text-align: right; color: ${navyBlue}; font-size: 10px; font-weight: 600;">${formatNumber(material.amount)}</td>
-           </tr>
+          </tr>
         `;
       }
 
@@ -1133,16 +1132,16 @@ const InvoiceGenerator = () => {
       const remainingRows = perPage - currentRows;
 
       for (let i = 0; i < remainingRows; i++) {
-        const bgColor = (endIdx + i) % 2 === 0 ? 'white' : lightBg;
+        // White background for all empty rows
         tableHtml += `
-          <tr style="height: 30px; border-bottom: 1px solid ${borderColor}; background-color: ${bgColor};">
+          <tr style="height: 30px; background-color: white;">
             <td style="padding: 5px 4px; text-align: center; color: ${textColor}; font-size: 10px; border-right: 1px solid ${borderColor};">${endIdx + i + 1}</td>
-            <td style="border-right: 1px solid ${borderColor};"></td>
-            <td style="border-right: 1px solid ${borderColor};"></td>
-            <td style="border-right: 1px solid ${borderColor};"></td>
-            <td style="border-right: 1px solid ${borderColor};"></td>
-            <td style=""></td>
-           </tr>
+            <td style="border-right: 1px solid ${borderColor};">&nbsp;</td>
+            <td style="border-right: 1px solid ${borderColor};">&nbsp;</td>
+            <td style="border-right: 1px solid ${borderColor};">&nbsp;</td>
+            <td style="border-right: 1px solid ${borderColor};">&nbsp;</td>
+            <td style="">&nbsp;</td>
+          </tr>
         `;
       }
 
@@ -1150,16 +1149,16 @@ const InvoiceGenerator = () => {
         tableHtml += `
           <tr style="background-color: ${lightBg}; border-top: 1px solid ${borderColor}; border-bottom: 1px solid ${borderColor};">
             <td colspan="6" style="padding: 5px 4px; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: ${navyBlue}; font-weight: 600;">Additional Services (Excl. GST)</td>
-           </tr>
+          </tr>
         `;
         formData.additionalServices.forEach((service, index) => {
-          const bgColor = index % 2 === 0 ? 'white' : lightBg;
+          // White background for service rows
           tableHtml += `
-            <tr style="background-color: ${bgColor}; border-bottom: 1px solid ${borderColor}; height: 30px;">
+            <tr style="background-color: white; border-bottom: 1px solid ${borderColor}; height: 30px;">
               <td style="padding: 5px 4px; text-align: center; color: ${textColor}; font-size: 10px; border-right: 1px solid ${borderColor};">${index + 1}</td>
               <td colspan="4" style="padding: 5px 4px; color: ${textColor}; font-size: 10px; border-right: 1px solid ${borderColor};">${service.description}</td>
               <td style="padding: 5px 4px; text-align: right; color: ${navyBlue}; font-size: 10px; font-weight: 600;">${formatNumber(service.amount)}</td>
-             </tr>
+            </tr>
           `;
         });
       }
@@ -1169,42 +1168,42 @@ const InvoiceGenerator = () => {
           <tr style="background-color: ${lightBg}; border-top: 1px solid ${borderColor};">
             <td colspan="5" style="padding: 6px 4px; text-align: right; font-size: 10px; font-weight: 600; color: ${navyBlue}; border-right: 1px solid ${borderColor};">Sub Total</td>
             <td style="padding: 6px 4px; text-align: right; font-size: 10px; font-weight: 700; color: ${navyBlue};">₹ ${formatNumber(totals.subTotal)}</td>
-           </tr>
+          </tr>
         `;
 
         if (gstType === "GST") {
           tableHtml += `
-            <tr style="background-color: white; border-bottom: 1px solid ${borderColor};">
+            <tr style="background-color: white;">
               <td colspan="5" style="padding: 5px 4px; text-align: right; font-size: 10px; color: ${textColor}; border-right: 1px solid ${borderColor};">CGST (${formData.cgstPercentage}%)</td>
               <td style="padding: 5px 4px; text-align: right; font-size: 10px; color: ${textColor};">₹ ${formatNumber(totals.cgstAmount)}</td>
-             </tr>
-            <tr style="background-color: ${lightBg}; border-bottom: 1px solid ${borderColor};">
+            </tr>
+            <tr style="background-color: ${lightBg};">
               <td colspan="5" style="padding: 5px 4px; text-align: right; font-size: 10px; color: ${textColor}; border-right: 1px solid ${borderColor};">SGST (${formData.sgstPercentage}%)</td>
               <td style="padding: 5px 4px; text-align: right; font-size: 10px; color: ${textColor};">₹ ${formatNumber(totals.sgstAmount)}</td>
-             </tr>
+            </tr>
           `;
         } else {
           tableHtml += `
-            <tr style="background-color: white; border-bottom: 1px solid ${borderColor};">
+            <tr style="background-color: white;">
               <td colspan="5" style="padding: 5px 4px; text-align: right; font-size: 10px; color: ${textColor}; border-right: 1px solid ${borderColor};">IGST (${igstPercentage}%)</td>
               <td style="padding: 5px 4px; text-align: right; font-size: 10px; color: ${textColor};">₹ ${formatNumber(totals.igstAmount)}</td>
-             </tr>
+            </tr>
           `;
         }
 
         tableHtml += `
-          <tr style="background-color: ${lightBg}; border-bottom: 1px solid ${borderColor};">
+          <tr style="background-color: ${lightBg};">
             <td colspan="5" style="padding: 5px 4px; text-align: right; font-size: 10px; color: ${textColor}; border-right: 1px solid ${borderColor};">Round Off</td>
             <td style="padding: 5px 4px; text-align: right; font-size: 10px; color: ${textColor};">${totals.roundOff > 0 ? '+' : ''}${formatNumberWithDecimal(totals.roundOff)}</td>
-           </tr>
-          <tr style="background-color: ${navyBlue};">
-            <td colspan="5" style="padding: 8px 4px; text-align: right; font-size: 12px; font-weight: 700; color: white; border-right: 1px solid rgba(255,255,255,0.2);">Grand Total</td>
-            <td style="padding: 8px 4px; text-align: right; font-size: 12px; font-weight: 700; color: white;">₹ ${formatNumber(totals.grandTotalWithRoundOff)}</td>
-           </tr>
+          </tr>
+          <tr style="background-color: white;">
+            <td colspan="5" style="padding: 8px 4px; text-align: right; font-size: 12px; font-weight: 700; color: ${navyBlue}; border-right: 1px solid ${borderColor}; background-color: white;">Grand Total</td>
+            <td style="padding: 8px 4px; text-align: right; font-size: 12px; font-weight: 700; color: ${navyBlue}; background-color: white;">₹ ${formatNumber(totals.grandTotalWithRoundOff)}</td>
+          </tr>
         `;
       }
 
-      tableHtml += `</tbody><table></div>`;
+      tableHtml += `</tbody>`;
       return tableHtml;
     };
 
@@ -1232,9 +1231,9 @@ const InvoiceGenerator = () => {
               <div style="font-size: 9px; color: ${textColor}; text-align: right;">Authorized Signatory</div>
             </div>
           </div>
-          <div style="background-color: ${navyBlue}; padding: 5px 12px; display: flex; justify-content: space-between; align-items: center;">
-            <span style="color: rgba(255,255,255,0.9); font-size: 8px; letter-spacing: 1px;">SUBJECT TO ${(formData.companyState || '').toUpperCase()} JURISDICTION</span>
-            <span style="color: rgba(255,255,255,0.9); font-size: 8px; letter-spacing: 1px;">COMPUTER GENERATED INVOICE</span>
+          <div style="background-color: white; padding: 5px 12px; display: flex; justify-content: space-between; align-items: center; color: ${navyBlue};">
+            <span style="color: ${navyBlue}; font-size: 8px; letter-spacing: 1px;">SUBJECT TO ${(formData.companyState || '').toUpperCase()} JURISDICTION</span>
+            <span style="color: ${navyBlue}; font-size: 8px; letter-spacing: 1px;">COMPUTER GENERATED INVOICE</span>
           </div>
         </div>
       `;
@@ -1529,7 +1528,7 @@ const InvoiceGenerator = () => {
             <th style="border:1px solid ${borderColor};padding:6px 4px;width:8%;font-size:11px;color:${maroon};font-weight:700;">Qty.</th>
             <th style="border:1px solid ${borderColor};padding:6px 4px;width:13%;font-size:11px;color:${maroon};font-weight:700;">Rate (₹)</th>
             <th style="border:1px solid ${borderColor};padding:6px 4px;width:13%;font-size:11px;color:${maroon};font-weight:700;">Amount (₹)</th>
-           </tr>
+            </tr>
         `;
         table.appendChild(thead);
 
@@ -1542,14 +1541,14 @@ const InvoiceGenerator = () => {
           const desc = material.description;
           const truncDesc = desc.length > 80 ? desc.substring(0, 80) + '...' : desc;
           const row = document.createElement("tr");
-          row.style.cssText = `height:30px;background-color:${i % 2 === 0 ? '#F9FAFB' : 'white'};`;
+          row.style.cssText = `height:30px;background-color:white;`;
           row.innerHTML = `
-            <td style="border:1px solid ${borderColor};padding:5px 4px;text-align:center;font-size:11px;vertical-align:middle;">${i + 1}</td>
-            <td style="border:1px solid ${borderColor};padding:5px 4px;font-size:11px;vertical-align:middle;" title="${desc}">${truncDesc}</td>
-            <td style="border:1px solid ${borderColor};padding:5px 4px;text-align:center;font-size:11px;vertical-align:middle;">${material.hsn}</td>
-            <td style="border:1px solid ${borderColor};padding:5px 4px;text-align:center;font-size:11px;vertical-align:middle;">${material.quantity}</td>
-            <td style="border:1px solid ${borderColor};padding:5px 4px;text-align:right;font-size:11px;vertical-align:middle;">${formatNumber(material.rate)}</td>
-            <td style="border:1px solid ${borderColor};padding:5px 4px;text-align:right;font-weight:bold;font-size:11px;vertical-align:middle;">${formatNumber(material.amount)}</td>
+            <td style="border-left:1px solid ${borderColor};border-right:1px solid ${borderColor};padding:5px 4px;text-align:center;font-size:11px;vertical-align:middle;">${i + 1}</td>
+            <td style="border-left:1px solid ${borderColor};border-right:1px solid ${borderColor};padding:5px 4px;font-size:11px;vertical-align:middle;" title="${desc}">${truncDesc}</td>
+            <td style="border-left:1px solid ${borderColor};border-right:1px solid ${borderColor};padding:5px 4px;text-align:center;font-size:11px;vertical-align:middle;">${material.hsn}</td>
+            <td style="border-left:1px solid ${borderColor};border-right:1px solid ${borderColor};padding:5px 4px;text-align:center;font-size:11px;vertical-align:middle;">${material.quantity}</td>
+            <td style="border-left:1px solid ${borderColor};border-right:1px solid ${borderColor};padding:5px 4px;text-align:right;font-size:11px;vertical-align:middle;">${formatNumber(material.rate)}</td>
+            <td style="border-left:1px solid ${borderColor};border-right:1px solid ${borderColor};padding:5px 4px;text-align:right;font-weight:bold;font-size:11px;vertical-align:middle;">${formatNumber(material.amount)}</td>
           `;
           tbody.appendChild(row);
         }
@@ -1560,14 +1559,14 @@ const InvoiceGenerator = () => {
         for (let i = 0; i < remainingRows; i++) {
           const emptyRow = document.createElement("tr");
           emptyRow.style.height = "30px";
-          emptyRow.style.backgroundColor = (endIdx + i) % 2 === 0 ? '#F9FAFB' : 'white';
+          emptyRow.style.backgroundColor = "white";
           emptyRow.innerHTML = `
-            <td style="border:1px solid ${borderColor};padding:5px 4px;font-size:11px;">${endIdx + i + 1}</td>
-            <td style="border:1px solid ${borderColor};padding:5px 4px;"></td>
-            <td style="border:1px solid ${borderColor};padding:5px 4px;"></td>
-            <td style="border:1px solid ${borderColor};padding:5px 4px;"></td>
-            <td style="border:1px solid ${borderColor};padding:5px 4px;"></td>
-            <td style="border:1px solid ${borderColor};padding:5px 4px;"></td>
+            <td style="border-left:1px solid ${borderColor};border-right:1px solid ${borderColor};padding:5px 4px;font-size:11px;">${endIdx + i + 1}</td>
+            <td style="border-left:1px solid ${borderColor};border-right:1px solid ${borderColor};padding:5px 4px;">&nbsp;</td>
+            <td style="border-left:1px solid ${borderColor};border-right:1px solid ${borderColor};padding:5px 4px;">&nbsp;</td>
+            <td style="border-left:1px solid ${borderColor};border-right:1px solid ${borderColor};padding:5px 4px;">&nbsp;</td>
+            <td style="border-left:1px solid ${borderColor};border-right:1px solid ${borderColor};padding:5px 4px;">&nbsp;</td>
+            <td style="border-left:1px solid ${borderColor};border-right:1px solid ${borderColor};padding:5px 4px;">&nbsp;</td>
           `;
           tbody.appendChild(emptyRow);
         }
@@ -1580,11 +1579,11 @@ const InvoiceGenerator = () => {
             tbody.appendChild(svcHeader);
             formData.additionalServices.forEach((service, index) => {
               const svcRow = document.createElement("tr");
-              svcRow.style.cssText = `background-color:${index % 2 === 0 ? '#FFF8E1' : '#FFF3E0'};height:30px;`;
+              svcRow.style.cssText = `background-color:white;height:30px;`;
               svcRow.innerHTML = `
-                <td style="border:1px solid ${borderColor};padding:5px 4px;text-align:center;font-size:11px;">${index + 1}</td>
-                <td colspan="4" style="border:1px solid ${borderColor};padding:5px 4px;font-size:11px;">${service.description}</td>
-                <td style="border:1px solid ${borderColor};padding:5px 4px;text-align:right;font-weight:bold;font-size:11px;">${formatNumber(service.amount)}</td>
+                <td style="border-left:1px solid ${borderColor};border-right:1px solid ${borderColor};padding:5px 4px;text-align:center;font-size:11px;">${index + 1}</td>
+                <td colspan="4" style="border-left:1px solid ${borderColor};border-right:1px solid ${borderColor};padding:5px 4px;font-size:11px;">${service.description}</td>
+                <td style="border-left:1px solid ${borderColor};border-right:1px solid ${borderColor};padding:5px 4px;text-align:right;font-weight:bold;font-size:11px;">${formatNumber(service.amount)}</td>
               `;
               tbody.appendChild(svcRow);
             });
@@ -1632,10 +1631,10 @@ const InvoiceGenerator = () => {
           tbody.appendChild(roundOffRow);
 
           const grandTotalRow = document.createElement("tr");
-          grandTotalRow.style.backgroundColor = maroon;
+          grandTotalRow.style.backgroundColor = "white";
           grandTotalRow.innerHTML = `
-            <td colspan="5" style="border:1px solid ${maroon};padding:8px 4px;text-align:right;font-weight:bold;font-size:12px;color:white;">GRAND TOTAL (After Round Off):</td>
-            <td style="border:1px solid ${maroon};padding:8px 4px;font-weight:bold;font-size:12px;text-align:right;color:white;">₹ ${formatNumber(totals.grandTotalWithRoundOff)}</td>
+            <td colspan="5" style="border:1px solid ${borderColor};padding:8px 4px;text-align:right;font-weight:bold;font-size:12px;color:${maroon};background-color:white;">GRAND TOTAL:</td>
+            <td style="border:1px solid ${borderColor};padding:8px 4px;font-weight:bold;font-size:12px;text-align:right;color:${maroon};background-color:white;">₹ ${formatNumber(totals.grandTotalWithRoundOff)}</td>
           `;
           tbody.appendChild(grandTotalRow);
         }
@@ -1649,7 +1648,7 @@ const InvoiceGenerator = () => {
         footerDiv.style.marginTop = "6px";
 
         const amountInWordsDiv = document.createElement("div");
-        amountInWordsDiv.style.cssText = `border:1px solid ${borderColor};border-top:none;padding:6px 8px;font-size:10px;background-color:white;color:#333333;display:flex;justify-content:space-between;align-items:center;`;
+        amountInWordsDiv.style.cssText = `border:1px solid ${borderColor};border-top:none;border-right:none;border-left:none; padding:6px 8px;font-size:10px;background-color:white;color:#333333;display:flex;justify-content:space-between;align-items:center;`;
         amountInWordsDiv.innerHTML = `
           <div><strong style="color:${maroon};">Amount Chargeable (in words):</strong> ${numberToWords(totals.grandTotalWithRoundOff)}</div>
           <div style="font-weight:bold;font-size:10px;color:#6B7280;">E. & O.E</div>
@@ -1674,7 +1673,7 @@ const InvoiceGenerator = () => {
         `;
 
         const signatureDiv = document.createElement("div");
-        signatureDiv.style.cssText = `flex:1;border:1px solid ${borderColor};border-top:none;padding:8px;font-size:10px;background:white;text-align:center;position:relative;min-height:90px;`;
+        signatureDiv.style.cssText = `flex:1;border:1px solid ${borderColor};border-top:none;border-right:none; padding:8px;font-size:10px;background:white;text-align:center;position:relative;min-height:90px;`;
         signatureDiv.innerHTML = `
           <div style="color:${maroon};position:absolute;top:12px;right:12px;"><strong style="font-size:11px;">For ${formData.companyName}</strong></div>
           <div style="font-size:9px;color:#6B7280;position:absolute;bottom:12px;right:12px;text-align:right;">Authorized Signatory</div>
@@ -1685,7 +1684,7 @@ const InvoiceGenerator = () => {
         footerDiv.appendChild(bottomSection);
 
         const footerNoteDiv = document.createElement("div");
-        footerNoteDiv.style.cssText = `border:1px solid ${borderColor};border-top:none;padding:5px;text-align:center;font-size:9px;background-color:${maroon};color:white;`;
+        footerNoteDiv.style.cssText = `border:1px solid ${borderColor};border-top:none;padding:5px;text-align:center;font-size:9px;background-color:white;color:${maroon};`;
         footerNoteDiv.textContent = `SUBJECT TO ${(formData.companyState || '').toUpperCase()} JURISDICTION | This is a Computer Generated Invoice`;
         footerDiv.appendChild(footerNoteDiv);
 
@@ -1804,14 +1803,14 @@ const InvoiceGenerator = () => {
 
         const thead = document.createElement("thead");
         thead.innerHTML = `
-          <tr style="background-color:${navyBlue};">
-            <th style="padding:6px 4px;text-align:left;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:white;font-weight:600;width:4%;border-right:1px solid ${borderColor};">No.</th>
-            <th style="padding:6px 4px;text-align:left;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:white;font-weight:600;width:52%;border-right:1px solid ${borderColor};">Description</th>
-            <th style="padding:6px 4px;text-align:center;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:white;font-weight:600;width:10%;border-right:1px solid ${borderColor};">HSN/SAC</th>
-            <th style="padding:6px 4px;text-align:center;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:white;font-weight:600;width:8%;border-right:1px solid ${borderColor};">Qty</th>
-            <th style="padding:6px 4px;text-align:right;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:white;font-weight:600;width:13%;border-right:1px solid ${borderColor};">Rate (₹)</th>
-            <th style="padding:6px 4px;text-align:right;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:white;font-weight:600;width:13%;">Amount (₹)</th>
-          </table>
+          <tr style="background-color: white;">
+            <th style="padding:6px 4px;text-align:left;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:${navyBlue};font-weight:600;width:4%;border-right:1px solid ${borderColor};border-bottom:1px solid ${borderColor};">No.</th>
+            <th style="padding:6px 4px;text-align:left;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:${navyBlue};font-weight:600;width:52%;border-right:1px solid ${borderColor};border-bottom:1px solid ${borderColor};">Description</th>
+            <th style="padding:6px 4px;text-align:center;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:${navyBlue};font-weight:600;width:10%;border-right:1px solid ${borderColor};border-bottom:1px solid ${borderColor};">HSN/SAC</th>
+            <th style="padding:6px 4px;text-align:center;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:${navyBlue};font-weight:600;width:8%;border-right:1px solid ${borderColor};border-bottom:1px solid ${borderColor};">Qty</th>
+            <th style="padding:6px 4px;text-align:right;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:${navyBlue};font-weight:600;width:13%;border-right:1px solid ${borderColor};border-bottom:1px solid ${borderColor};">Rate (₹)</th>
+            <th style="padding:6px 4px;text-align:right;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:${navyBlue};font-weight:600;width:13%;border-bottom:1px solid ${borderColor};">Amount (₹)</th>
+            </tr>
         `;
         table.appendChild(thead);
 
@@ -1823,9 +1822,8 @@ const InvoiceGenerator = () => {
           const material = formData.materials[i];
           const desc = material.description;
           const truncDesc = desc.length > 80 ? desc.substring(0, 80) + '...' : desc;
-          const isEven = i % 2 === 0;
           const row = document.createElement("tr");
-          row.style.cssText = `background-color:${isEven ? 'white' : lightBg};border-bottom:1px solid ${borderColor};height:30px;`;
+          row.style.cssText = `background-color:white;height:30px;`;
           row.innerHTML = `
             <td style="padding:5px 4px;text-align:center;color:${textColor};font-size:10px;border-right:1px solid ${borderColor};">${i + 1}</td>
             <td style="padding:5px 4px;color:${textColor};font-size:10px;border-right:1px solid ${borderColor};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${desc}">${truncDesc}</td>
@@ -1842,14 +1840,14 @@ const InvoiceGenerator = () => {
 
         for (let i = 0; i < remainingRows; i++) {
           const emptyRow = document.createElement("tr");
-          emptyRow.style.cssText = `height:30px;border-bottom:1px solid ${borderColor};background-color:${(endIdx + i) % 2 === 0 ? 'white' : lightBg};`;
+          emptyRow.style.cssText = `height:30px;background-color:white;`;
           emptyRow.innerHTML = `
             <td style="padding:5px 4px;text-align:center;color:${textColor};font-size:10px;border-right:1px solid ${borderColor};">${endIdx + i + 1}</td>
-            <td style="border-right:1px solid ${borderColor};"></td>
-            <td style="border-right:1px solid ${borderColor};"></td>
-            <td style="border-right:1px solid ${borderColor};"></td>
-            <td style="border-right:1px solid ${borderColor};"></td>
-            <td style=""></td>
+            <td style="border-right:1px solid ${borderColor};">&nbsp;</td>
+            <td style="border-right:1px solid ${borderColor};">&nbsp;</td>
+            <td style="border-right:1px solid ${borderColor};">&nbsp;</td>
+            <td style="border-right:1px solid ${borderColor};">&nbsp;</td>
+            <td style="">&nbsp;</td>
           `;
           tbody.appendChild(emptyRow);
         }
@@ -1864,7 +1862,7 @@ const InvoiceGenerator = () => {
 
           formData.additionalServices.forEach((service, index) => {
             const svcRow = document.createElement("tr");
-            svcRow.style.cssText = `background-color:${index % 2 === 0 ? 'white' : lightBg};border-bottom:1px solid ${borderColor};height:30px;`;
+            svcRow.style.cssText = `background-color:white;border-bottom:1px solid ${borderColor};height:30px;`;
             svcRow.innerHTML = `
               <td style="padding:5px 4px;text-align:center;color:${textColor};font-size:10px;border-right:1px solid ${borderColor};">${index + 1}</td>
               <td colspan="4" style="padding:5px 4px;color:${textColor};font-size:10px;border-right:1px solid ${borderColor};">${service.description}</td>
@@ -1876,7 +1874,7 @@ const InvoiceGenerator = () => {
 
         if (page === pageCount - 1) {
           const subtotalRow = document.createElement("tr");
-          subtotalRow.style.cssText = `background-color:${lightBg};border-top:1px solid ${borderColor};border-bottom:1px solid ${borderColor};`;
+          subtotalRow.style.cssText = `background-color:${lightBg};border-top:1px solid ${borderColor};`;
           subtotalRow.innerHTML = `
             <td colspan="5" style="padding:6px 4px;text-align:right;font-size:10px;font-weight:600;color:${navyBlue};border-right:1px solid ${borderColor};">Sub Total</td>
             <td style="padding:6px 4px;text-align:right;font-size:10px;font-weight:700;color:${navyBlue};">₹ ${formatNumber(totals.subTotal)}</td>
@@ -1885,7 +1883,7 @@ const InvoiceGenerator = () => {
 
           if (gstType === "GST") {
             const cgstRow = document.createElement("tr");
-            cgstRow.style.cssText = `background-color:white;border-bottom:1px solid ${borderColor};`;
+            cgstRow.style.cssText = `background-color:white;`;
             cgstRow.innerHTML = `
               <td colspan="5" style="padding:5px 4px;text-align:right;font-size:10px;color:${textColor};border-right:1px solid ${borderColor};">CGST (${formData.cgstPercentage}%)</td>
               <td style="padding:5px 4px;text-align:right;font-size:10px;color:${textColor};">₹ ${formatNumber(totals.cgstAmount)}</td>
@@ -1893,7 +1891,7 @@ const InvoiceGenerator = () => {
             tbody.appendChild(cgstRow);
 
             const sgstRow = document.createElement("tr");
-            sgstRow.style.cssText = `background-color:${lightBg};border-bottom:1px solid ${borderColor};`;
+            sgstRow.style.cssText = `background-color:${lightBg};`;
             sgstRow.innerHTML = `
               <td colspan="5" style="padding:5px 4px;text-align:right;font-size:10px;color:${textColor};border-right:1px solid ${borderColor};">SGST (${formData.sgstPercentage}%)</td>
               <td style="padding:5px 4px;text-align:right;font-size:10px;color:${textColor};">₹ ${formatNumber(totals.sgstAmount)}</td>
@@ -1901,7 +1899,7 @@ const InvoiceGenerator = () => {
             tbody.appendChild(sgstRow);
           } else {
             const igstRow = document.createElement("tr");
-            igstRow.style.cssText = `background-color:white;border-bottom:1px solid ${borderColor};`;
+            igstRow.style.cssText = `background-color:white;`;
             igstRow.innerHTML = `
               <td colspan="5" style="padding:5px 4px;text-align:right;font-size:10px;color:${textColor};border-right:1px solid ${borderColor};">IGST (${igstPercentage}%)</td>
               <td style="padding:5px 4px;text-align:right;font-size:10px;color:${textColor};">₹ ${formatNumber(totals.igstAmount)}</td>
@@ -1910,19 +1908,19 @@ const InvoiceGenerator = () => {
           }
 
           const roundOffRow = document.createElement("tr");
-          roundOffRow.style.cssText = `background-color:${lightBg};border-bottom:1px solid ${borderColor};`;
+          roundOffRow.style.cssText = `background-color:${lightBg};`;
           roundOffRow.innerHTML = `
             <td colspan="5" style="padding:5px 4px;text-align:right;font-size:10px;color:${textColor};border-right:1px solid ${borderColor};">Round Off</td>
             <td style="padding:5px 4px;text-align:right;font-size:10px;color:${textColor};">${totals.roundOff > 0 ? '+' : ''}${formatNumberWithDecimal(totals.roundOff)}</td>
-            </tr>
+           </tr>
           `;
           tbody.appendChild(roundOffRow);
 
           const grandTotalRow = document.createElement("tr");
-          grandTotalRow.style.cssText = `background-color:${navyBlue};`;
+          grandTotalRow.style.cssText = `background-color:white;`;
           grandTotalRow.innerHTML = `
-            <td colspan="5" style="padding:8px 4px;text-align:right;font-size:12px;font-weight:700;color:white;border-right:1px solid rgba(255,255,255,0.2);">Grand Total</td>
-            <td style="padding:8px 4px;text-align:right;font-size:12px;font-weight:700;color:white;">₹ ${formatNumber(totals.grandTotalWithRoundOff)}</td>
+            <td colspan="5" style="padding:8px 4px;text-align:right;font-size:12px;font-weight:700;color:${navyBlue};border-right:1px solid ${borderColor};background-color:white;">Grand Total</td>
+            <td style="padding:8px 4px;text-align:right;font-size:12px;font-weight:700;color:${navyBlue};background-color:white;">₹ ${formatNumber(totals.grandTotalWithRoundOff)}</td>
           `;
           tbody.appendChild(grandTotalRow);
         }
@@ -1972,10 +1970,10 @@ const InvoiceGenerator = () => {
           footer.appendChild(bottomRow);
 
           const bottomBar = document.createElement("div");
-          bottomBar.style.cssText = `background-color:${navyBlue};padding:5px 12px;display:flex;justify-content:space-between;align-items:center;`;
+          bottomBar.style.cssText = `background-color:white;padding:5px 12px;display:flex;justify-content:space-between;align-items:center;color:${navyBlue};`;
           bottomBar.innerHTML = `
-            <span style="color:rgba(255,255,255,0.9);font-size:8px;letter-spacing:1px;">SUBJECT TO ${(formData.companyState || '').toUpperCase()} JURISDICTION</span>
-            <span style="color:rgba(255,255,255,0.9);font-size:8px;letter-spacing:1px;">COMPUTER GENERATED INVOICE</span>
+            <span style="color:${navyBlue};font-size:8px;letter-spacing:1px;">SUBJECT TO ${(formData.companyState || '').toUpperCase()} JURISDICTION</span>
+            <span style="color:${navyBlue};font-size:8px;letter-spacing:1px;">COMPUTER GENERATED INVOICE</span>
           `;
           footer.appendChild(bottomBar);
           pageDiv.appendChild(footer);
@@ -2470,7 +2468,7 @@ const InvoiceGenerator = () => {
                   <th style={styles.tableHeader}>Rate</th>
                   <th style={styles.tableHeader}>Amount</th>
                   <th style={styles.tableHeader}>Action</th>
-                </tr>
+                 </tr>
               </thead>
               <tbody>
                 {formData.materials.map((material, index) => (
@@ -2509,7 +2507,7 @@ const InvoiceGenerator = () => {
                   <th style={styles.tableHeader}>Description</th>
                   <th style={styles.tableHeader}>Amount</th>
                   <th style={styles.tableHeader}>Action</th>
-                </tr>
+                 </tr>
               </thead>
               <tbody>
                 {formData.additionalServices.map((service, index) => (
