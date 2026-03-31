@@ -17,24 +17,14 @@ const InvoiceGenerator = () => {
   const [previewHtml, setPreviewHtml] = useState("");
   const previewRef = useRef(null);
   
-  // Bank details for both companies
+  // Bank details - will be loaded from Firebase
   const [bankDetails, setBankDetails] = useState({
-    faizan: {
-      accountName: "Faizan Enterprises",
-      accountNumber: "120000079620",
-      bank: "Canara Bank",
-      branch: "Kedambur",
-      ifscCode: "CNRB0001464",
-      gpayNumber: "9445877025"
-    },
-    gee: {
-      accountName: "GEE Enterprises",
-      accountNumber: "120000079620",
-bank: "Canara Bank",
-      branch: "Kedambur",
-      ifscCode: "CNRB0001464",
-      gpayNumber: "9445877025"
-        }
+    accountName: "",
+    accountNumber: "",
+    bank: "",
+    branch: "",
+    ifscCode: "",
+    gpayNumber: ""
   });
 
   const [gstType, setGstType] = useState("GST");
@@ -172,33 +162,61 @@ bank: "Canara Bank",
     return isFaizanCompany() ? "FE" : "GEE";
   }, [isFaizanCompany]);
 
-  // Get current company's bank details
+  // Get current company's bank details from adminData
   const getCurrentBankDetails = useCallback(() => {
-    return isFaizanCompany() ? bankDetails.faizan : bankDetails.gee;
-  }, [isFaizanCompany, bankDetails]);
+    return {
+      accountName: adminData?.accountName || "",
+      accountNumber: adminData?.accountNumber || "",
+      bank: adminData?.bank || "",
+      branch: adminData?.branch || "",
+      ifscCode: adminData?.ifscCode || "",
+      gpayNumber: adminData?.gpayNumber || ""
+    };
+  }, [adminData]);
 
   // Open bank details dialog
   const openBankDialog = () => {
+    // Load current bank details into dialog state
+    setBankDetails(getCurrentBankDetails());
     setBankDialogOpen(true);
   };
 
   // Handle bank details change
   const handleBankDetailChange = (e) => {
     const { name, value } = e.target;
-    const company = isFaizanCompany() ? 'faizan' : 'gee';
     setBankDetails(prev => ({
       ...prev,
-      [company]: {
-        ...prev[company],
-        [name]: value
-      }
+      [name]: value
     }));
   };
 
-  // Save bank details and close dialog
-  const saveBankDetails = () => {
-    setBankDialogOpen(false);
-    showNotification("Bank details saved successfully!", "success");
+  // Save bank details to Firebase
+  const saveBankDetails = async () => {
+    try {
+      // Update adminData with new bank details
+      const updatedAdminData = {
+        ...adminData,
+        accountName: bankDetails.accountName,
+        accountNumber: bankDetails.accountNumber,
+        bank: bankDetails.bank,
+        branch: bankDetails.branch,
+        ifscCode: bankDetails.ifscCode,
+        gpayNumber: bankDetails.gpayNumber,
+        timestamp: new Date().toISOString()
+      };
+
+      const adminCollection = getCompanyAdminCollection();
+      await addDoc(adminCollection, updatedAdminData);
+      
+      // Update local adminData state
+      setAdminData(updatedAdminData);
+      
+      setBankDialogOpen(false);
+      showNotification("Bank details saved successfully!", "success");
+    } catch (error) {
+      console.error("Error saving bank details:", error);
+      showNotification("Failed to save bank details", "error");
+    }
   };
 
   // Handle PO/DC entries
@@ -259,7 +277,7 @@ bank: "Canara Bank",
           companyGSTIN: latestData.companyGSTIN || "",
           companyContact: latestData.companyContact || "",
           companyDescription: latestData.companyDescription || "",
-          companyState: "Tamil Nadu",
+          companyState: latestData.companyState || "Tamil Nadu",
         }));
 
         showNotification("Company details loaded from database!", "success");
@@ -775,7 +793,7 @@ bank: "Canara Bank",
   // Function to generate preview HTML with reduced padding
   const generatePreviewHTML = () => {
     const isFaizan = isFaizanCompany();
-    const rowsPerPage = 18; // Increased rows per page with reduced padding
+    const rowsPerPage = 18;
     const pageCount = Math.ceil(formData.materials.length / rowsPerPage);
     const getStartIdx = (page) => page * rowsPerPage;
     const getEndIdx = (page) => Math.min((page + 1) * rowsPerPage, formData.materials.length);
@@ -862,7 +880,7 @@ bank: "Canara Bank",
               <th style="border: 1px solid ${borderColor}; padding: 6px 4px; width: 8%; font-size: 11px; color: ${maroon}; font-weight: 700;">Qty.</th>
               <th style="border: 1px solid ${borderColor}; padding: 6px 4px; width: 13%; font-size: 11px; color: ${maroon}; font-weight: 700;">Rate (₹)</th>
               <th style="border: 1px solid ${borderColor}; padding: 6px 4px; width: 13%; font-size: 11px; color: ${maroon}; font-weight: 700;">Amount (₹)</th>
-              </tr>
+              </table>
           </thead>
           <tbody>
       `;
@@ -977,12 +995,12 @@ bank: "Canara Bank",
             <div style="flex: 1; border: 1px solid ${borderColor}; border: none; padding: 6px 8px; font-size: 9px; background-color: white;">
               <div style="font-weight: bold; margin-bottom: 4px; color: ${maroon}; font-size: 10px;">Bank Details:</div>
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
-                <div style="color: #333333; font-size: 9px;"><strong>Account Name:</strong> ${currentBankDetails.accountName}</div>
-                <div style="color: #333333; font-size: 9px;"><strong>Account No:</strong> ${currentBankDetails.accountNumber}</div>
-                <div style="color: #333333; font-size: 9px;"><strong>Bank:</strong> ${currentBankDetails.bank}</div>
-                <div style="color: #333333; font-size: 9px;"><strong>Branch:</strong> ${currentBankDetails.branch}</div>
-                <div style="color: #333333; font-size: 9px;"><strong>IFSC:</strong> ${currentBankDetails.ifscCode}</div>
-                <div style="color: #333333; font-size: 9px;"><strong>G-Pay:</strong> ${currentBankDetails.gpayNumber}</div>
+                <div style="color: #333333; font-size: 9px;"><strong>Account Name:</strong> ${currentBankDetails.accountName || 'Not configured'}</div>
+                <div style="color: #333333; font-size: 9px;"><strong>Account No:</strong> ${currentBankDetails.accountNumber || 'Not configured'}</div>
+                <div style="color: #333333; font-size: 9px;"><strong>Bank:</strong> ${currentBankDetails.bank || 'Not configured'}</div>
+                <div style="color: #333333; font-size: 9px;"><strong>Branch:</strong> ${currentBankDetails.branch || 'Not configured'}</div>
+                <div style="color: #333333; font-size: 9px;"><strong>IFSC:</strong> ${currentBankDetails.ifscCode || 'Not configured'}</div>
+                <div style="color: #333333; font-size: 9px;"><strong>G-Pay:</strong> ${currentBankDetails.gpayNumber || 'Not configured'}</div>
               </div>
             </div>
             <div style="flex: 1; border: 1px solid ${borderColor}; border-top: none;border-right: none; padding: 8px; font-size: 10px; background: white; text-align: center; position: relative; min-height: 90px;">
@@ -1186,7 +1204,7 @@ bank: "Canara Bank",
         `;
       }
 
-      tableHtml += `</tbody></table></div>`;
+      tableHtml += `</tbody><table></div>`;
       return tableHtml;
     };
 
@@ -1201,12 +1219,12 @@ bank: "Canara Bank",
             <div style="flex: 1; padding: 6px 12px; background: white; border-right: 1px solid ${borderColor};">
               <div style="font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: ${navyBlue}; font-weight: 600; margin-bottom: 5px;">Bank Details</div>
               <div style="font-size: 9px; color: ${textColor}; line-height: 1.6;">
-                <div><span style="font-weight: 600; color: ${navyBlue};">Account Name:</span> ${currentBankDetails.accountName}</div>
-                <div><span style="font-weight: 600; color: ${navyBlue};">Account No:</span> ${currentBankDetails.accountNumber}</div>
-                <div><span style="font-weight: 600; color: ${navyBlue};">Bank:</span> ${currentBankDetails.bank}</div>
-                <div><span style="font-weight: 600; color: ${navyBlue};">Branch:</span> ${currentBankDetails.branch}</div>
-                <div><span style="font-weight: 600; color: ${navyBlue};">IFSC:</span> ${currentBankDetails.ifscCode}</div>
-                <div><span style="font-weight: 600; color: ${navyBlue};">G-Pay:</span> ${currentBankDetails.gpayNumber}</div>
+                <div><span style="font-weight: 600; color: ${navyBlue};">Account Name:</span> ${currentBankDetails.accountName || 'Not configured'}</div>
+                <div><span style="font-weight: 600; color: ${navyBlue};">Account No:</span> ${currentBankDetails.accountNumber || 'Not configured'}</div>
+                <div><span style="font-weight: 600; color: ${navyBlue};">Bank:</span> ${currentBankDetails.bank || 'Not configured'}</div>
+                <div><span style="font-weight: 600; color: ${navyBlue};">Branch:</span> ${currentBankDetails.branch || 'Not configured'}</div>
+                <div><span style="font-weight: 600; color: ${navyBlue};">IFSC:</span> ${currentBankDetails.ifscCode || 'Not configured'}</div>
+                <div><span style="font-weight: 600; color: ${navyBlue};">G-Pay:</span> ${currentBankDetails.gpayNumber || 'Not configured'}</div>
               </div>
             </div>
             <div style="flex: 1; padding: 6px 12px; background: ${lightBg}; display: flex; flex-direction: column; justify-content: space-between; min-height: 90px;">
@@ -1315,7 +1333,7 @@ bank: "Canara Bank",
       });
 
       const isFaizan = isFaizanCompany();
-      const rowsPerPage = 18; // Increased rows per page with reduced padding
+      const rowsPerPage = 18;
       const pageCount = Math.ceil(formData.materials.length / rowsPerPage);
       const getStartIdx = (page) => page * rowsPerPage;
       const getEndIdx = (page) => Math.min((page + 1) * rowsPerPage, formData.materials.length);
@@ -1646,12 +1664,12 @@ bank: "Canara Bank",
         bankDetailsDiv.innerHTML = `
           <div style="font-weight:bold;margin-bottom:4px;color:${maroon};font-size:10px;">Bank Details:</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
-            <div style="color:#333333;font-size:9px;"><strong>Account Name:</strong> ${currentBankDetails.accountName}</div>
-            <div style="color:#333333;font-size:9px;"><strong>Account No:</strong> ${currentBankDetails.accountNumber}</div>
-            <div style="color:#333333;font-size:9px;"><strong>Bank:</strong> ${currentBankDetails.bank}</div>
-            <div style="color:#333333;font-size:9px;"><strong>Branch:</strong> ${currentBankDetails.branch}</div>
-            <div style="color:#333333;font-size:9px;"><strong>IFSC:</strong> ${currentBankDetails.ifscCode}</div>
-            <div style="color:#333333;font-size:9px;"><strong>G-Pay:</strong> ${currentBankDetails.gpayNumber}</div>
+            <div style="color:#333333;font-size:9px;"><strong>Account Name:</strong> ${currentBankDetails.accountName || 'Not configured'}</div>
+            <div style="color:#333333;font-size:9px;"><strong>Account No:</strong> ${currentBankDetails.accountNumber || 'Not configured'}</div>
+            <div style="color:#333333;font-size:9px;"><strong>Bank:</strong> ${currentBankDetails.bank || 'Not configured'}</div>
+            <div style="color:#333333;font-size:9px;"><strong>Branch:</strong> ${currentBankDetails.branch || 'Not configured'}</div>
+            <div style="color:#333333;font-size:9px;"><strong>IFSC:</strong> ${currentBankDetails.ifscCode || 'Not configured'}</div>
+            <div style="color:#333333;font-size:9px;"><strong>G-Pay:</strong> ${currentBankDetails.gpayNumber || 'Not configured'}</div>
           </div>
         `;
 
@@ -1793,7 +1811,7 @@ bank: "Canara Bank",
             <th style="padding:6px 4px;text-align:center;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:white;font-weight:600;width:8%;border-right:1px solid ${borderColor};">Qty</th>
             <th style="padding:6px 4px;text-align:right;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:white;font-weight:600;width:13%;border-right:1px solid ${borderColor};">Rate (₹)</th>
             <th style="padding:6px 4px;text-align:right;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:white;font-weight:600;width:13%;">Amount (₹)</th>
-           </tr>
+          </table>
         `;
         table.appendChild(thead);
 
@@ -1933,12 +1951,12 @@ bank: "Canara Bank",
           bankBox.innerHTML = `
             <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:${navyBlue};font-weight:600;margin-bottom:5px;">Bank Details</div>
             <div style="font-size:9px;color:${textColor};line-height:1.6;">
-              <div><span style="font-weight:600;color:${navyBlue};">Account Name:</span> ${currentBankDetailsForFooter.accountName}</div>
-              <div><span style="font-weight:600;color:${navyBlue};">Account No:</span> ${currentBankDetailsForFooter.accountNumber}</div>
-              <div><span style="font-weight:600;color:${navyBlue};">Bank:</span> ${currentBankDetailsForFooter.bank}</div>
-              <div><span style="font-weight:600;color:${navyBlue};">Branch:</span> ${currentBankDetailsForFooter.branch}</div>
-              <div><span style="font-weight:600;color:${navyBlue};">IFSC:</span> ${currentBankDetailsForFooter.ifscCode}</div>
-              <div><span style="font-weight:600;color:${navyBlue};">G-Pay:</span> ${currentBankDetailsForFooter.gpayNumber}</div>
+              <div><span style="font-weight:600;color:${navyBlue};">Account Name:</span> ${currentBankDetailsForFooter.accountName || 'Not configured'}</div>
+              <div><span style="font-weight:600;color:${navyBlue};">Account No:</span> ${currentBankDetailsForFooter.accountNumber || 'Not configured'}</div>
+              <div><span style="font-weight:600;color:${navyBlue};">Bank:</span> ${currentBankDetailsForFooter.bank || 'Not configured'}</div>
+              <div><span style="font-weight:600;color:${navyBlue};">Branch:</span> ${currentBankDetailsForFooter.branch || 'Not configured'}</div>
+              <div><span style="font-weight:600;color:${navyBlue};">IFSC:</span> ${currentBankDetailsForFooter.ifscCode || 'Not configured'}</div>
+              <div><span style="font-weight:600;color:${navyBlue};">G-Pay:</span> ${currentBankDetailsForFooter.gpayNumber || 'Not configured'}</div>
             </div>
           `;
 
@@ -2452,7 +2470,7 @@ bank: "Canara Bank",
                   <th style={styles.tableHeader}>Rate</th>
                   <th style={styles.tableHeader}>Amount</th>
                   <th style={styles.tableHeader}>Action</th>
-                 </tr>
+                </tr>
               </thead>
               <tbody>
                 {formData.materials.map((material, index) => (
@@ -2491,7 +2509,7 @@ bank: "Canara Bank",
                   <th style={styles.tableHeader}>Description</th>
                   <th style={styles.tableHeader}>Amount</th>
                   <th style={styles.tableHeader}>Action</th>
-                 </tr>
+                </tr>
               </thead>
               <tbody>
                 {formData.additionalServices.map((service, index) => (
@@ -2643,7 +2661,7 @@ bank: "Canara Bank",
               <input
                 type="text"
                 name="accountName"
-                value={getCurrentBankDetails().accountName || ""}
+                value={bankDetails.accountName || ""}
                 onChange={handleBankDetailChange}
                 style={styles.input}
                 placeholder="Enter account name"
@@ -2654,7 +2672,7 @@ bank: "Canara Bank",
               <input
                 type="text"
                 name="accountNumber"
-                value={getCurrentBankDetails().accountNumber || ""}
+                value={bankDetails.accountNumber || ""}
                 onChange={handleBankDetailChange}
                 style={styles.input}
                 placeholder="Enter account number"
@@ -2665,7 +2683,7 @@ bank: "Canara Bank",
               <input
                 type="text"
                 name="bank"
-                value={getCurrentBankDetails().bank || ""}
+                value={bankDetails.bank || ""}
                 onChange={handleBankDetailChange}
                 style={styles.input}
                 placeholder="Enter bank name"
@@ -2676,7 +2694,7 @@ bank: "Canara Bank",
               <input
                 type="text"
                 name="branch"
-                value={getCurrentBankDetails().branch || ""}
+                value={bankDetails.branch || ""}
                 onChange={handleBankDetailChange}
                 style={styles.input}
                 placeholder="Enter branch"
@@ -2687,7 +2705,7 @@ bank: "Canara Bank",
               <input
                 type="text"
                 name="ifscCode"
-                value={getCurrentBankDetails().ifscCode || ""}
+                value={bankDetails.ifscCode || ""}
                 onChange={handleBankDetailChange}
                 style={styles.input}
                 placeholder="Enter IFSC code"
@@ -2698,7 +2716,7 @@ bank: "Canara Bank",
               <input
                 type="text"
                 name="gpayNumber"
-                value={getCurrentBankDetails().gpayNumber || ""}
+                value={bankDetails.gpayNumber || ""}
                 onChange={handleBankDetailChange}
                 style={styles.input}
                 placeholder="Enter G-Pay number"
