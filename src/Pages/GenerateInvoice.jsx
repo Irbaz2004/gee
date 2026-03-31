@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Autocomplete, TextField, Dialog, DialogTitle, DialogContent, DialogActions, Button } from "@mui/material";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { collection, addDoc, getDocs, query, orderBy, limit } from "firebase/firestore";
 import { db } from "../config";
 import { useCompany } from "../context/CompanyContext";
-import { getCompanyCollection } from "../utils/firestoreUtils";
 
 const InvoiceGenerator = () => {
   const { selectedCompany } = useCompany();
@@ -14,16 +13,36 @@ const InvoiceGenerator = () => {
   const [companyLogo, setCompanyLogo] = useState(null);
   const [logoError, setLogoError] = useState(false);
   const [bankDialogOpen, setBankDialogOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState("");
+  const previewRef = useRef(null);
   
-  
+  // Bank details for both companies
   const [bankDetails, setBankDetails] = useState({
-    accountName: "Faizan Enterprises",
-    accountNumber: "120000079620",
-    bank: "Canara Bank",
-    branch: "Kedambur",
-    ifscCode: "CNRB0001464",
-    gpayNumber: "9445877025"
+    faizan: {
+      accountName: "Faizan Enterprises",
+      accountNumber: "120000079620",
+      bank: "Canara Bank",
+      branch: "Kedambur",
+      ifscCode: "CNRB0001464",
+      gpayNumber: "9445877025"
+    },
+    gee: {
+      accountName: "GEE Enterprises",
+      accountNumber: "120000079620",
+bank: "Canara Bank",
+      branch: "Kedambur",
+      ifscCode: "CNRB0001464",
+      gpayNumber: "9445877025"
+        }
   });
+
+  const [gstType, setGstType] = useState("GST");
+  const [igstPercentage, setIgstPercentage] = useState(18);
+
+  const [podcEntries, setPodcEntries] = useState([
+    { id: 1, number: '', date: '' }
+  ]);
 
   const [formData, setFormData] = useState({
     // Company Details - Will be loaded from Firebase
@@ -38,10 +57,6 @@ const InvoiceGenerator = () => {
     // Invoice Details
     invoiceNumber: "",
     invoiceDate: new Date().toISOString().split("T")[0],
-    poNumber: "",
-    poDate: "",
-    DCNO: "",
-    DCDate: "",
 
     // Client Details
     clientName: "",
@@ -83,9 +98,9 @@ const InvoiceGenerator = () => {
     return name
       ?.toLowerCase()
       .trim()
-      .replace(/[&\/\\#,+()$~%.'":*?<>{}]/g, "") // remove special characters
-      .replace(/\s+/g, "-") // replace spaces with hyphen
-      .replace(/-+/g, "-"); // remove multiple hyphens
+      .replace(/[&\/\\#,+()$~%.'":*?<>{}]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-");
   };
 
   // ================================
@@ -93,10 +108,7 @@ const InvoiceGenerator = () => {
   // ================================
   const getCompanyLogoPath = (companyName) => {
     if (!companyName) return null;
-
     const fileName = sanitizeFilename(companyName);
-
-    // Default extension (recommended)
     return `/assets/${fileName}.png`;
   };
 
@@ -106,9 +118,7 @@ const InvoiceGenerator = () => {
   const loadCompanyLogo = (companyName) => {
     try {
       setLogoError(false);
-
       const logoPath = getCompanyLogoPath(companyName);
-
       console.log("Attempting to load logo from path:", logoPath);
 
       if (!logoPath) {
@@ -117,18 +127,15 @@ const InvoiceGenerator = () => {
       }
 
       const img = new Image();
-
       img.onload = () => {
         console.log("✅ Logo loaded successfully:", logoPath);
         setCompanyLogo(logoPath);
       };
-
       img.onerror = () => {
         console.log("❌ Logo not found, using default logo");
         setLogoError(true);
         setCompanyLogo("/assets/default-logo.png");
       };
-
       img.src = logoPath;
     } catch (error) {
       console.log("Error loading logo:", error);
@@ -165,19 +172,26 @@ const InvoiceGenerator = () => {
     return isFaizanCompany() ? "FE" : "GEE";
   }, [isFaizanCompany]);
 
-  // Open bank details dialog for Faizan company
+  // Get current company's bank details
+  const getCurrentBankDetails = useCallback(() => {
+    return isFaizanCompany() ? bankDetails.faizan : bankDetails.gee;
+  }, [isFaizanCompany, bankDetails]);
+
+  // Open bank details dialog
   const openBankDialog = () => {
-    if (isFaizanCompany()) {
-      setBankDialogOpen(true);
-    }
+    setBankDialogOpen(true);
   };
 
   // Handle bank details change
   const handleBankDetailChange = (e) => {
     const { name, value } = e.target;
+    const company = isFaizanCompany() ? 'faizan' : 'gee';
     setBankDetails(prev => ({
       ...prev,
-      [name]: value
+      [company]: {
+        ...prev[company],
+        [name]: value
+      }
     }));
   };
 
@@ -187,6 +201,34 @@ const InvoiceGenerator = () => {
     showNotification("Bank details saved successfully!", "success");
   };
 
+  // Handle PO/DC entries
+  const addPodcEntry = () => {
+    setPodcEntries(prev => [...prev, { id: Date.now(), number: '', date: '' }]);
+  };
+
+  const removePodcEntry = (id) => {
+    if (podcEntries.length > 1) {
+      setPodcEntries(prev => prev.filter(entry => entry.id !== id));
+    }
+  };
+
+  const handlePodcChange = (id, field, value) => {
+    setPodcEntries(prev => prev.map(entry => 
+      entry.id === id ? { ...entry, [field]: value } : entry
+    ));
+  };
+
+  // Get company-specific collection path
+  const getCompanyInvoiceCollection = useCallback(() => {
+    const companyPath = isFaizanCompany() ? "faizan" : "galaxy";
+    return collection(db, "companies", companyPath, "invoices");
+  }, [isFaizanCompany]);
+
+  const getCompanyAdminCollection = useCallback(() => {
+    const companyPath = isFaizanCompany() ? "faizan" : "galaxy";
+    return collection(db, "companies", companyPath, "adminSettings");
+  }, [isFaizanCompany]);
+
   // Fetch admin data and last invoice number on component mount
   useEffect(() => {
     if (selectedCompany) {
@@ -194,13 +236,14 @@ const InvoiceGenerator = () => {
       fetchLastInvoiceNumber();
       fetchMaterialsFromFirebase();
       fetchClientsFromFirebase();
+      setPodcEntries([{ id: Date.now(), number: "", date: "" }]);
     }
   }, [selectedCompany]);
 
   const fetchAdminData = async () => {
     try {
       setLoading(true);
-      const adminCollection = getCompanyCollection(db, selectedCompany.id, "adminSettings");
+      const adminCollection = getCompanyAdminCollection();
       const q = query(adminCollection, orderBy("timestamp", "desc"), limit(1));
       const snapshot = await getDocs(q);
 
@@ -208,7 +251,6 @@ const InvoiceGenerator = () => {
         const latestData = snapshot.docs[0].data();
         setAdminData(latestData);
 
-        // Update formData with admin data
         setFormData(prev => ({
           ...prev,
           companyName: latestData.companyName || "",
@@ -217,7 +259,7 @@ const InvoiceGenerator = () => {
           companyGSTIN: latestData.companyGSTIN || "",
           companyContact: latestData.companyContact || "",
           companyDescription: latestData.companyDescription || "",
-          companyState: "Tamil Nadu", // Default or fetch from admin
+          companyState: "Tamil Nadu",
         }));
 
         showNotification("Company details loaded from database!", "success");
@@ -234,19 +276,17 @@ const InvoiceGenerator = () => {
 
   const fetchLastInvoiceNumber = async () => {
     try {
-      const invoicesCollection = getCompanyCollection(db, selectedCompany.id, "invoices");
+      const invoicesCollection = getCompanyInvoiceCollection();
       const q = query(invoicesCollection, orderBy("invoiceNumber", "desc"), limit(1));
       const snapshot = await getDocs(q);
 
       if (!snapshot.empty) {
         const lastInvoice = snapshot.docs[0].data();
         setLastInvoiceNumber(lastInvoice.invoiceNumber);
-        // Generate next invoice number only if not in reset mode
         if (!isResetMode) {
           generateNextInvoiceNumber(lastInvoice.invoiceNumber);
         }
       } else {
-        // First invoice
         setLastInvoiceNumber(null);
         if (!isResetMode) {
           generateNextInvoiceNumber(null);
@@ -262,46 +302,6 @@ const InvoiceGenerator = () => {
   };
 
   const generateNextInvoiceNumber = (lastNumber) => {
-    // Calculate Financial Year
-    const today = new Date();
-    const currentMonth = today.getMonth(); // 0-11 (Jan is 0)
-    const currentYear = today.getFullYear();
-
-    let startYear, endYear;
-    if (currentMonth >= 3) { // April onwards (April is 3)
-      startYear = currentYear;
-      endYear = currentYear + 1;
-    } else {
-      startYear = currentYear - 1;
-      endYear = currentYear;
-    }
-
-    const fyString = `${startYear.toString().slice(-2)}-${endYear.toString().slice(-2)}`;
-    const prefix = getCompanyPrefix();
-
-    if (!lastNumber) {
-      setFormData(prev => ({ ...prev, invoiceNumber: `${prefix}/001/${fyString}` }));
-      return;
-    }
-
-    // Check if the last invoice is from the same financial year and company
-    const parts = lastNumber.split('/');
-    if (parts.length === 3 && parts[0] === prefix && parts[2] === fyString) {
-      const lastSeq = parseInt(parts[1]);
-      if (!isNaN(lastSeq)) {
-        const nextSeq = (lastSeq + 1).toString().padStart(3, '0');
-        setFormData(prev => ({ ...prev, invoiceNumber: `${prefix}/${nextSeq}/${fyString}` }));
-        return;
-      }
-    }
-
-    // Fallback if format doesn't match or different financial year
-    setFormData(prev => ({ ...prev, invoiceNumber: `${prefix}/001/${fyString}` }));
-  };
-
-  // Function to reset invoice number to base format
-  const resetInvoiceNumber = () => {
-    // Calculate Financial Year
     const today = new Date();
     const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();
@@ -317,27 +317,28 @@ const InvoiceGenerator = () => {
 
     const fyString = `${startYear.toString().slice(-2)}-${endYear.toString().slice(-2)}`;
     const prefix = getCompanyPrefix();
-    
-    // Set reset mode to true
-    setIsResetMode(true);
-    
-    // Clear the last invoice number cache
-    setLastInvoiceNumber(null);
-    
-    // Set the invoice number to base format
+
+    if (!lastNumber) {
+      setFormData(prev => ({ ...prev, invoiceNumber: `${prefix}/001/${fyString}` }));
+      return;
+    }
+
+    const parts = lastNumber.split('/');
+    if (parts.length === 3 && parts[0] === prefix && parts[2] === fyString) {
+      const lastSeq = parseInt(parts[1]);
+      if (!isNaN(lastSeq)) {
+        const nextSeq = (lastSeq + 1).toString().padStart(3, '0');
+        setFormData(prev => ({ ...prev, invoiceNumber: `${prefix}/${nextSeq}/${fyString}` }));
+        return;
+      }
+    }
+
     setFormData(prev => ({ ...prev, invoiceNumber: `${prefix}/001/${fyString}` }));
-    
-    showNotification("Invoice number reset to base format. Next invoice will start from 001.", "success");
-    
-    // Reset the mode after a short delay
-    setTimeout(() => {
-      setIsResetMode(false);
-    }, 1000);
   };
 
   const fetchMaterialsFromFirebase = async () => {
     try {
-      const materialsCollection = getCompanyCollection(db, selectedCompany.id, "materials");
+      const materialsCollection = collection(db, "materials");
       const materialsSnapshot = await getDocs(materialsCollection);
       const materialsList = materialsSnapshot.docs.map(doc => ({
         id: doc.id,
@@ -358,12 +359,12 @@ const InvoiceGenerator = () => {
       setFirebaseMaterials(uniqueMaterials);
     } catch (error) {
       console.error("Error fetching materials from Firebase:", error);
+      showNotification("Failed to load materials", "error");
     }
   };
 
   const fetchClientsFromFirebase = async () => {
     try {
-      // Fetch from global clients collection (not company-specific)
       const clientsCollection = collection(db, "clients");
       const clientsSnapshot = await getDocs(clientsCollection);
       const clientsList = clientsSnapshot.docs.map(doc => ({
@@ -371,14 +372,13 @@ const InvoiceGenerator = () => {
         ...doc.data()
       }));
       
-      console.log("Fetched clients from global collection:", clientsList); // Debug log
       setClients(clientsList);
     } catch (error) {
       console.error("Error fetching clients from Firebase:", error);
+      showNotification("Failed to load clients", "error");
     }
   };
 
-  // Save invoice data to Firebase
   const saveInvoiceToFirebase = async () => {
     try {
       const totals = calculateTotals();
@@ -386,16 +386,18 @@ const InvoiceGenerator = () => {
         ...formData,
         materials: formData.materials,
         additionalServices: formData.additionalServices,
+        gstType,
+        igstPercentage: gstType === "IGST" ? igstPercentage : null,
+        podcEntries: podcEntries.filter(entry => entry.number || entry.date),
         timestamp: new Date().toISOString(),
         totals: totals,
         roundOff: totals.roundOff,
         grandTotalWithRoundOff: totals.grandTotalWithRoundOff,
-        bankDetails: isFaizanCompany() ? bankDetails : null // Save bank details only for Faizan
+        bankDetails: getCurrentBankDetails()
       };
 
-      const invoicesCollection = getCompanyCollection(db, selectedCompany.id, "invoices");
+      const invoicesCollection = getCompanyInvoiceCollection();
       await addDoc(invoicesCollection, invoiceData);
-      console.log("Invoice saved to Firebase successfully!");
       return true;
     } catch (error) {
       console.error("Error saving invoice to Firebase:", error);
@@ -404,7 +406,6 @@ const InvoiceGenerator = () => {
     }
   };
 
-  // Save material to Firebase
   const saveMaterialToFirebase = async (material) => {
     try {
       const existingMaterial = firebaseMaterials.find(mat =>
@@ -413,7 +414,7 @@ const InvoiceGenerator = () => {
       );
 
       if (!existingMaterial) {
-        const materialsCollection = getCompanyCollection(db, selectedCompany.id, "materials");
+        const materialsCollection = collection(db, "materials");
         await addDoc(materialsCollection, {
           materialName: material.description,
           hsnCode: material.hsn,
@@ -427,29 +428,73 @@ const InvoiceGenerator = () => {
     }
   };
 
-  // Fix: Use useCallback to prevent unnecessary re-renders
   const handleInputChange = useCallback((e) => {
-    const { name, value } = e.target;
+    const { name, value, type } = e.target;
+    
+    let processedValue = value;
+    
+    if (type === 'number') {
+      if (value === '' || value === '-' || value === '.') {
+        processedValue = value;
+      } else {
+        const parsed = parseFloat(value);
+        if (!isNaN(parsed)) {
+          processedValue = value;
+        }
+      }
+    }
+    
     setFormData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: processedValue,
     }));
   }, []);
 
   const handleMaterialChange = useCallback((e) => {
-    const { name, value } = e.target;
+    const { name, value, type } = e.target;
+    
+    let processedValue = value;
+    
+    if (name === "quantity" || name === "rate") {
+      if (value === '' || value === '.' || value === '-') {
+        processedValue = value;
+      } else {
+        const regex = /^-?\d*\.?\d*$/;
+        if (regex.test(value)) {
+          processedValue = value;
+        } else {
+          return;
+        }
+      }
+    }
+    
     setNewMaterial((prev) => ({
       ...prev,
-      [name]:
-        name === "quantity" || name === "rate" ? parseFloat(value) || 0 : value,
+      [name]: processedValue,
     }));
   }, []);
 
   const handleAdditionalServiceChange = useCallback((e) => {
-    const { name, value } = e.target;
+    const { name, value, type } = e.target;
+    
+    let processedValue = value;
+    
+    if (name === "amount") {
+      if (value === '' || value === '.' || value === '-') {
+        processedValue = value;
+      } else {
+        const regex = /^-?\d*\.?\d*$/;
+        if (regex.test(value)) {
+          processedValue = value;
+        } else {
+          return;
+        }
+      }
+    }
+    
     setNewAdditionalService((prev) => ({
       ...prev,
-      [name]: name === "amount" ? parseFloat(value) || 0 : value,
+      [name]: processedValue,
     }));
   }, []);
 
@@ -478,15 +523,10 @@ const InvoiceGenerator = () => {
     }
   }, []);
 
-  // Handle client input change - Fix for focus issue
   const handleClientInputChange = useCallback((event, newInputValue) => {
-    // Only update if the input value actually changed
-    if (newInputValue !== formData.clientName) {
-      setFormData(prev => ({ ...prev, clientName: newInputValue }));
-    }
-  }, [formData.clientName]);
+    setFormData(prev => ({ ...prev, clientName: newInputValue }));
+  }, []);
 
-  // Handle material selection from Firebase
   const handleMaterialSelect = useCallback((e) => {
     const selectedMaterialId = e.target.value;
     if (selectedMaterialId) {
@@ -496,7 +536,7 @@ const InvoiceGenerator = () => {
           ...prev,
           description: selectedMaterial.materialName || "",
           hsn: selectedMaterial.hsnCode || "",
-          rate: selectedMaterial.rate || ""
+          rate: selectedMaterial.rate?.toString() || ""
         }));
         showNotification("Material details loaded from database", "info");
       }
@@ -504,22 +544,21 @@ const InvoiceGenerator = () => {
   }, [firebaseMaterials, showNotification]);
 
   const addMaterial = useCallback(() => {
-    if (
-      !newMaterial.description ||
-      !newMaterial.quantity ||
-      !newMaterial.rate
-    ) {
+    if (!newMaterial.description || !newMaterial.quantity || !newMaterial.rate) {
       showNotification("Please fill description, quantity, and rate", "error");
       return;
     }
 
-    const amount = (newMaterial.quantity || 0) * (newMaterial.rate || 0);
+    const quantity = parseFloat(newMaterial.quantity) || 0;
+    const rate = parseFloat(newMaterial.rate) || 0;
+    const amount = quantity * rate;
+
     const material = {
       id: Date.now(),
       description: newMaterial.description,
       hsn: newMaterial.hsn || "",
-      quantity: newMaterial.quantity,
-      rate: newMaterial.rate,
+      quantity: quantity,
+      rate: rate,
       amount: amount,
     };
 
@@ -528,7 +567,6 @@ const InvoiceGenerator = () => {
       materials: [...prev.materials, material],
     }));
 
-    // Save material to Firebase
     saveMaterialToFirebase(material);
 
     setNewMaterial({
@@ -547,10 +585,12 @@ const InvoiceGenerator = () => {
       return;
     }
 
+    const amount = parseFloat(newAdditionalService.amount) || 0;
+
     const service = {
       id: Date.now(),
       description: newAdditionalService.description,
-      amount: parseFloat(newAdditionalService.amount) || 0,
+      amount: amount,
     };
 
     setFormData((prev) => ({
@@ -583,6 +623,7 @@ const InvoiceGenerator = () => {
   }, [showNotification]);
 
   const formatNumber = (num) => {
+    if (num === undefined || num === null || isNaN(num)) return "0.00";
     return new Intl.NumberFormat("en-IN", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
@@ -590,6 +631,7 @@ const InvoiceGenerator = () => {
   };
 
   const formatNumberWithDecimal = (num) => {
+    if (num === undefined || num === null || isNaN(num)) return "0.00";
     return num.toFixed(2);
   };
 
@@ -605,11 +647,20 @@ const InvoiceGenerator = () => {
     );
 
     const subTotal = materialsTotal + servicesTotal;
-    const cgstAmount = (materialsTotal * formData.cgstPercentage) / 100;
-    const sgstAmount = (materialsTotal * formData.sgstPercentage) / 100;
-    const total = subTotal + cgstAmount + sgstAmount;
     
-    // Calculate round off
+    let cgstAmount = 0;
+    let sgstAmount = 0;
+    let igstAmount = 0;
+
+    if (gstType === "GST") {
+      cgstAmount = (materialsTotal * formData.cgstPercentage) / 100;
+      sgstAmount = (materialsTotal * formData.sgstPercentage) / 100;
+    } else {
+      igstAmount = (materialsTotal * igstPercentage) / 100;
+    }
+
+    const total = subTotal + cgstAmount + sgstAmount + igstAmount;
+    
     const totalRounded = Math.round(total);
     const roundOff = totalRounded - total;
 
@@ -617,16 +668,16 @@ const InvoiceGenerator = () => {
       subTotal,
       cgstAmount,
       sgstAmount,
+      igstAmount,
       total,
       roundOff,
       grandTotalWithRoundOff: totalRounded,
       materialsTotal,
       servicesTotal
     };
-  }, [formData.materials, formData.additionalServices, formData.cgstPercentage, formData.sgstPercentage]);
+  }, [formData.materials, formData.additionalServices, formData.cgstPercentage, formData.sgstPercentage, gstType, igstPercentage]);
 
   const numberToWords = (num) => {
-    // Fix for decimal numbers
     const integerPart = Math.floor(num);
     const decimalPart = Math.round((num - integerPart) * 100);
 
@@ -678,7 +729,6 @@ const InvoiceGenerator = () => {
     return result + " Only";
   };
 
-  // Navigation functions
   const nextStep = useCallback(() => {
     if (currentStep < 4) {
       setCurrentStep(currentStep + 1);
@@ -691,19 +741,12 @@ const InvoiceGenerator = () => {
     }
   }, [currentStep]);
 
-  // Reset form after successful generation
   const resetForm = async () => {
-    // Fetch new invoice number based on the last saved invoice
     await fetchLastInvoiceNumber();
 
-    // Reset form data except company details
     setFormData(prev => ({
       ...prev,
       invoiceDate: new Date().toISOString().split("T")[0],
-      poNumber: "",
-      poDate: "",
-      DCNO: "",
-      DCDate: "",
       clientName: "",
       clientAddress: "",
       clientGSTIN: "",
@@ -711,6 +754,8 @@ const InvoiceGenerator = () => {
       materials: [],
       additionalServices: [],
     }));
+
+    setPodcEntries([{ id: Date.now(), number: "", date: "" }]);
 
     setNewMaterial({
       description: "",
@@ -727,6 +772,516 @@ const InvoiceGenerator = () => {
     setCurrentStep(1);
   };
 
+  // Function to generate preview HTML with reduced padding
+  const generatePreviewHTML = () => {
+    const isFaizan = isFaizanCompany();
+    const rowsPerPage = 18; // Increased rows per page with reduced padding
+    const pageCount = Math.ceil(formData.materials.length / rowsPerPage);
+    const getStartIdx = (page) => page * rowsPerPage;
+    const getEndIdx = (page) => Math.min((page + 1) * rowsPerPage, formData.materials.length);
+    const totals = calculateTotals();
+    const validPodcEntries = podcEntries.filter(entry => entry.number || entry.date);
+    const currentBankDetails = getCurrentBankDetails();
+
+    const buildFaizanPageHTML = (page) => {
+      const maroon = "#800020";
+      const borderColor = "#000000";
+      
+      let html = `
+        <div style="width: 210mm; padding: 0; margin: 0; background-color: white; box-sizing: border-box; font-family: 'Poppins', sans-serif; border: 1px solid ${borderColor};">
+      `;
+
+      if (page === 0) {
+        html += `
+          <div style="margin-bottom: 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; padding: 8px 12px 0 12px;">
+              <div style="flex: 1; display: flex; align-items: center;">
+                ${companyLogo && !logoError ? 
+                  `<img src="${companyLogo}" alt="Company Logo" style="height: 60px; width: auto; object-fit: contain;" />` :
+                  `<div style="height: 55px; width: 55px; background-color: #F3F4F6; display: flex; align-items: center; justify-content: center; border: 2px solid ${borderColor}; border-radius: 8px; color: ${maroon}; font-weight: bold; font-size: 24px;">${formData.companyName?.charAt(0)?.toUpperCase() || "C"}</div>`
+                }
+              </div>
+              <div style="flex: 1; text-align: right;">
+                <h2 style="margin: 0 0 4px 0; font-size: 22px; color: ${maroon}; font-weight: 700;">TAX INVOICE</h2>
+                <div style="font-size: 12px; line-height: 1.4; color: #333333;">
+                  <div><strong>Invoice No:</strong> ${formData.invoiceNumber}</div>
+                  <div><strong>Date:</strong> ${new Date(formData.invoiceDate).toLocaleDateString("en-IN")}</div>
+                </div>
+              </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 6px;padding: 8px 12px; background-color: white; border-top: 1px solid ${borderColor}; font-size: 11px; line-height: 1.4;">
+              <div style="flex: 1;border-right:1px solid ${borderColor};">
+                <div style="color: #333333;">
+                  <div style="font-weight: 700; margin-bottom: 4px; color: ${maroon}; font-size: 13px;">${formData.companyName}</div>
+                  <div style="margin-bottom: 3px;">${formData.companyAddress}</div>
+                  <div style="margin-bottom: 3px;"><strong>Email:</strong> ${formData.companyemail}</div>
+                  <div style="margin-bottom: 3px;"><strong>GSTIN:</strong> ${formData.companyGSTIN}</div>
+                  <div style="margin-bottom: 3px;"><strong>Contact:</strong> ${formData.companyContact}</div>
+                  <div style="margin-top: 4px; font-style: italic; font-size: 10px;">${formData.companyDescription}</div>
+                </div>
+              </div>
+              <div style="flex: 1; margin-left: 20px;">
+                <h3 style="margin: 0 0 4px 0; color: ${maroon}; font-size: 13px; font-weight: 700;">To:</h3>
+                <div style="color: #333333;">
+                  <div style="font-weight: 700; margin-bottom: 4px; color: ${maroon};">${formData.clientName}</div>
+                  <div style="margin-bottom: 3px;">${formData.clientAddress}</div>
+                  <div style="margin-bottom: 3px;"><strong>GSTIN:</strong> ${formData.clientGSTIN}</div>
+                  <div style="margin-bottom: 3px;"><strong>Contact:</strong> ${formData.clientContact}</div>
+                </div>
+                ${validPodcEntries.length > 0 ? `
+                  <div style="margin-top: 6px; padding-top: 5px; border-top: 1px dashed ${borderColor};">
+                    ${validPodcEntries.map((entry, idx) => `
+                      <div style="font-size: 10px; margin-bottom: 2px;"><strong>PO/DC No ${idx + 1}:</strong> ${entry.number || '-'} &nbsp;&nbsp;<strong>Date:</strong> ${entry.date || '-'}</div>
+                    `).join('')}
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      html += buildFaizanTableHTML(page, rowsPerPage, totals, borderColor, maroon, getStartIdx, getEndIdx, pageCount);
+
+      if (page === pageCount - 1) {
+        html += buildFaizanFooterHTML(maroon, borderColor, totals, currentBankDetails);
+      }
+
+      html += `</div>`;
+      return html;
+    };
+
+    const buildFaizanTableHTML = (page, perPage, totals, borderColor, maroon, getStartIdx, getEndIdx, pageCount) => {
+      let tableHtml = `
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px; color: #333333; font-family: 'Poppins', sans-serif; table-layout: fixed;">
+          <thead>
+            <tr style="height: 32px; background-color: white;">
+              <th style="border: 1px solid ${borderColor}; padding: 6px 4px; width: 4%; font-size: 11px; color: ${maroon}; font-weight: 700;">S.No.</th>
+              <th style="border: 1px solid ${borderColor}; padding: 6px 4px; width: 52%; font-size: 11px; color: ${maroon}; font-weight: 700;">Material Description</th>
+              <th style="border: 1px solid ${borderColor}; padding: 6px 4px; width: 10%; font-size: 11px; color: ${maroon}; font-weight: 700;">HSN/SAC</th>
+              <th style="border: 1px solid ${borderColor}; padding: 6px 4px; width: 8%; font-size: 11px; color: ${maroon}; font-weight: 700;">Qty.</th>
+              <th style="border: 1px solid ${borderColor}; padding: 6px 4px; width: 13%; font-size: 11px; color: ${maroon}; font-weight: 700;">Rate (₹)</th>
+              <th style="border: 1px solid ${borderColor}; padding: 6px 4px; width: 13%; font-size: 11px; color: ${maroon}; font-weight: 700;">Amount (₹)</th>
+              </tr>
+          </thead>
+          <tbody>
+      `;
+
+      const startIdx = getStartIdx(page);
+      const endIdx = getEndIdx(page);
+
+      for (let i = startIdx; i < endIdx; i++) {
+        const material = formData.materials[i];
+        const desc = material.description;
+        const truncDesc = desc.length > 80 ? desc.substring(0, 80) + '...' : desc;
+        const bgColor = i % 2 === 0 ? '#F9FAFB' : 'white';
+        tableHtml += `
+          <tr style="height: 30px; background-color: ${bgColor};">
+            <td style="border: 1px solid ${borderColor}; padding: 5px 4px; text-align: center; font-size: 11px; vertical-align: middle;">${i + 1}</td>
+            <td style="border: 1px solid ${borderColor}; padding: 5px 4px; font-size: 11px; vertical-align: middle;" title="${desc}">${truncDesc}</td>
+            <td style="border: 1px solid ${borderColor}; padding: 5px 4px; text-align: center; font-size: 11px; vertical-align: middle;">${material.hsn}</td>
+            <td style="border: 1px solid ${borderColor}; padding: 5px 4px; text-align: center; font-size: 11px; vertical-align: middle;">${material.quantity}</td>
+            <td style="border: 1px solid ${borderColor}; padding: 5px 4px; text-align: right; font-size: 11px; vertical-align: middle;">${formatNumber(material.rate)}</td>
+            <td style="border: 1px solid ${borderColor}; padding: 5px 4px; text-align: right; font-weight: bold; font-size: 11px; vertical-align: middle;">${formatNumber(material.amount)}</td>
+            </tr>
+        `;
+      }
+
+      const currentRows = endIdx - startIdx;
+      const remainingRows = perPage - currentRows;
+
+      for (let i = 0; i < remainingRows; i++) {
+        const bgColor = (endIdx + i) % 2 === 0 ? '#F9FAFB' : 'white';
+        tableHtml += `
+          <tr style="height: 30px; background-color: ${bgColor};">
+            <td style="border: 1px solid ${borderColor}; padding: 5px 4px; font-size: 11px;">${endIdx + i + 1}</td>
+            <td style="border: 1px solid ${borderColor}; padding: 5px 4px;"></td>
+            <td style="border: 1px solid ${borderColor}; padding: 5px 4px;"></td>
+            <td style="border: 1px solid ${borderColor}; padding: 5px 4px;"></td>
+            <td style="border: 1px solid ${borderColor}; padding: 5px 4px;"></td>
+            <td style="border: 1px solid ${borderColor}; padding: 5px 4px;"></td>
+           </tr>
+        `;
+      }
+
+      if (page === pageCount - 1) {
+        if (formData.additionalServices.length > 0) {
+          tableHtml += `
+            <tr style="background-color: ${maroon};">
+              <td colspan="6" style="border: 1px solid ${borderColor}; padding: 6px 4px; font-weight: bold; font-size: 11px; color: white;">Additional Services (Excluding GST)</td>
+             </tr>
+          `;
+          formData.additionalServices.forEach((service, index) => {
+            const bgColor = index % 2 === 0 ? '#FFF8E1' : '#FFF3E0';
+            tableHtml += `
+              <tr style="background-color: ${bgColor}; height: 30px;">
+                <td style="border: 1px solid ${borderColor}; padding: 5px 4px; text-align: center; font-size: 11px;">${index + 1}</td>
+                <td colspan="4" style="border: 1px solid ${borderColor}; padding: 5px 4px; font-size: 11px;">${service.description}</td>
+                <td style="border: 1px solid ${borderColor}; padding: 5px 4px; text-align: right; font-weight: bold; font-size: 11px;">${formatNumber(service.amount)}</td>
+               </tr>
+            `;
+          });
+        }
+
+        tableHtml += `
+          <tr style="background-color: #F9FAFB;">
+            <td colspan="5" style="border: 1px solid ${borderColor}; padding: 6px 4px; text-align: right; font-weight: bold; font-size: 11px; color: ${maroon};">Sub Total:</td>
+            <td style="border: 1px solid ${borderColor}; padding: 6px 4px; font-weight: bold; font-size: 11px; text-align: right; color: ${maroon};">₹ ${formatNumber(totals.subTotal)}</td>
+           </tr>
+        `;
+
+        if (gstType === "GST") {
+          tableHtml += `
+            <tr style="background-color: white;">
+              <td colspan="5" style="border: 1px solid ${borderColor}; padding: 6px 4px; text-align: right; font-weight: bold; font-size: 11px; color: ${maroon};">CGST (${formData.cgstPercentage}%):</td>
+              <td style="border: 1px solid ${borderColor}; padding: 6px 4px; font-weight: bold; font-size: 11px; text-align: right; color: ${maroon};">₹ ${formatNumber(totals.cgstAmount)}</td>
+             </tr>
+            <tr style="background-color: #F9FAFB;">
+              <td colspan="5" style="border: 1px solid ${borderColor}; padding: 6px 4px; text-align: right; font-weight: bold; font-size: 11px; color: ${maroon};">SGST (${formData.sgstPercentage}%):</td>
+              <td style="border: 1px solid ${borderColor}; padding: 6px 4px; font-weight: bold; font-size: 11px; text-align: right; color: ${maroon};">₹ ${formatNumber(totals.sgstAmount)}</td>
+             </tr>
+          `;
+        } else {
+          tableHtml += `
+            <tr style="background-color: white;">
+              <td colspan="5" style="border: 1px solid ${borderColor}; padding: 6px 4px; text-align: right; font-weight: bold; font-size: 11px; color: ${maroon};">IGST (${igstPercentage}%):</td>
+              <td style="border: 1px solid ${borderColor}; padding: 6px 4px; font-weight: bold; font-size: 11px; text-align: right; color: ${maroon};">₹ ${formatNumber(totals.igstAmount)}</td>
+             </tr>
+          `;
+        }
+
+        tableHtml += `
+          <tr style="background-color: #F3F4F6;">
+            <td colspan="5" style="border: 1px solid ${borderColor}; padding: 6px 4px; text-align: right; font-weight: bold; font-size: 11px; color: ${maroon};">Round Off:</td>
+            <td style="border: 1px solid ${borderColor}; padding: 6px 4px; font-weight: bold; font-size: 11px; text-align: right; color: ${maroon};">₹ ${totals.roundOff > 0 ? '+' : ''}${formatNumberWithDecimal(totals.roundOff)}</td>
+           </tr>
+          <tr style="background-color: ${maroon};">
+            <td colspan="5" style="border: 1px solid ${maroon}; padding: 8px 4px; text-align: right; font-weight: bold; font-size: 12px; color: white;">GRAND TOTAL:</td>
+            <td style="border: 1px solid ${maroon}; padding: 8px 4px; font-weight: bold; font-size: 12px; text-align: right; color: white;">₹ ${formatNumber(totals.grandTotalWithRoundOff)}</td>
+           </tr>
+        `;
+      }
+
+      tableHtml += `</tbody></table>`;
+      return tableHtml;
+    };
+
+    const buildFaizanFooterHTML = (maroon, borderColor, totals, currentBankDetails) => {
+      return `
+        <div style="margin-top: 6px;">
+          <div style="border: 1px solid ${borderColor}; border-top: none;border-right: none;border-left: none; padding: 6px 8px; font-size: 10px; background-color: white; color: #333333; display: flex; justify-content: space-between; align-items: center;">
+            <div><strong style="color: ${maroon};">Amount Chargeable (in words):</strong> ${numberToWords(totals.grandTotalWithRoundOff)}</div>
+            <div style="font-weight: bold; font-size: 10px; color: #6B7280;">E. & O.E</div>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+            <div style="flex: 1; border: 1px solid ${borderColor}; border: none; padding: 6px 8px; font-size: 9px; background-color: white;">
+              <div style="font-weight: bold; margin-bottom: 4px; color: ${maroon}; font-size: 10px;">Bank Details:</div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+                <div style="color: #333333; font-size: 9px;"><strong>Account Name:</strong> ${currentBankDetails.accountName}</div>
+                <div style="color: #333333; font-size: 9px;"><strong>Account No:</strong> ${currentBankDetails.accountNumber}</div>
+                <div style="color: #333333; font-size: 9px;"><strong>Bank:</strong> ${currentBankDetails.bank}</div>
+                <div style="color: #333333; font-size: 9px;"><strong>Branch:</strong> ${currentBankDetails.branch}</div>
+                <div style="color: #333333; font-size: 9px;"><strong>IFSC:</strong> ${currentBankDetails.ifscCode}</div>
+                <div style="color: #333333; font-size: 9px;"><strong>G-Pay:</strong> ${currentBankDetails.gpayNumber}</div>
+              </div>
+            </div>
+            <div style="flex: 1; border: 1px solid ${borderColor}; border-top: none;border-right: none; padding: 8px; font-size: 10px; background: white; text-align: center; position: relative; min-height: 90px;">
+              <div style="color: ${maroon}; position: absolute; top: 12px; right: 12px;"><strong style="font-size: 11px;">For ${formData.companyName}</strong></div>
+              <div style="font-size: 9px; color: #6B7280; position: absolute; bottom: 12px; right: 12px; text-align: right;">Authorized Signatory</div>
+            </div>
+          </div>
+          <div style="border: 1px solid ${borderColor}; border-top: none; padding: 5px; text-align: center; font-size: 9px; background-color: ${maroon}; color: white;">
+            SUBJECT TO ${(formData.companyState || '').toUpperCase()} JURISDICTION | This is a Computer Generated Invoice
+          </div>
+        </div>
+      `;
+    };
+
+    const buildGeePageHTML = (page) => {
+      const navyBlue = "#1A2C4E";
+      const borderColor = "#000000";
+      const textColor = "#1F2937";
+      const lightBg = "#F9FAFB";
+
+      let html = `
+        <div style="width: 210mm; padding: 0; margin: 0; background-color: white; box-sizing: border-box; font-family: 'Poppins', sans-serif; border: 1px solid ${borderColor};">
+      `;
+
+      if (page === 0) {
+        html += `
+          <div style="border-bottom: 1px solid ${borderColor}; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; background: white;">
+            <div style="display: flex; align-items: center; gap: 15px;">
+              ${companyLogo && !logoError ? 
+                `<img src="${companyLogo}" alt="Company Logo" style="height: 50px; width: auto; object-fit: contain;" />` :
+                `<div style="width: 50px; height: 50px; background: ${lightBg}; border: 1px solid ${borderColor}; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: ${navyBlue}; font-size: 22px; font-weight: 700;">${formData.companyName?.charAt(0)?.toUpperCase() || "G"}</div>`
+              }
+            </div>
+            <div style="text-align: right;">
+              <div style="color: ${navyBlue}; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 2px;">Tax Invoice</div>
+              <div style="color: ${navyBlue}; font-size: 16px; font-weight: 700;">${formData.invoiceNumber}</div>
+              <div style="color: #6B7280; font-size: 10px;">${new Date(formData.invoiceDate).toLocaleDateString("en-IN", {day:'2-digit',month:'long',year:'numeric'})}</div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 0; border-bottom: 1px solid ${borderColor};">
+            <div style="flex: 1; padding: 8px 12px; border-right: 1px solid ${borderColor}; background: ${lightBg};">
+              <div style="font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: ${navyBlue}; font-weight: 600; margin-bottom: 6px;">From</div>
+              <div style="font-size: 12px; color: ${navyBlue}; font-weight: 700; margin-bottom: 4px;">${formData.companyName}</div>
+              <div style="font-size: 10px; color: ${textColor}; line-height: 1.4;">
+                <div>${formData.companyAddress}</div>
+                <div><span style="font-weight: 600;">GSTIN:</span> ${formData.companyGSTIN}</div>
+                <div><span style="font-weight: 600;">Contact:</span> ${formData.companyContact}</div>
+                <div><span style="font-weight: 600;">Email:</span> ${formData.companyemail}</div>
+              </div>
+              <div style="margin-top: 4px; font-style: italic; font-size: 9px; color: #6B7280;">${formData.companyDescription}</div>
+            </div>
+            <div style="flex: 1; padding: 8px 12px; background: white;">
+              <div style="font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: ${navyBlue}; font-weight: 600; margin-bottom: 6px;">Bill To</div>
+              <div style="font-size: 12px; color: ${navyBlue}; font-weight: 700; margin-bottom: 4px;">${formData.clientName}</div>
+              <div style="font-size: 10px; color: ${textColor}; line-height: 1.4;">
+                <div>${formData.clientAddress}</div>
+                <div><span style="font-weight: 600;">GSTIN:</span> ${formData.clientGSTIN}</div>
+                <div><span style="font-weight: 600;">Contact:</span> ${formData.clientContact}</div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        if (validPodcEntries.length > 0) {
+          html += `
+            <div style="padding: 5px 12px; background: ${lightBg}; border-bottom: 1px solid ${borderColor}; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+              <span style="font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: ${navyBlue}; font-weight: 600; margin-right: 3px;">PO/DC:</span>
+          `;
+          validPodcEntries.forEach((entry, index) => {
+            html += `
+              <span style="display: inline-flex; gap: 6px; align-items: center; background: white; padding: 3px 8px; border-radius: 4px; border: 1px solid ${borderColor}; font-size: 9px;">
+                <strong style="color: ${navyBlue};">#${index + 1}:</strong> <span style="color: ${textColor};">${entry.number || '—'}</span> <span style="color: ${borderColor};">|</span> 
+                <strong style="color: ${navyBlue};">Date:</strong> <span style="color: ${textColor};">${entry.date ? new Date(entry.date).toLocaleDateString("en-IN") : '—'}</span>
+              </span>
+            `;
+          });
+          html += `</div>`;
+        }
+      }
+
+      html += buildGeeTableHTML(page, rowsPerPage, totals, borderColor, navyBlue, textColor, lightBg, getStartIdx, getEndIdx, pageCount);
+
+      if (page === pageCount - 1) {
+        html += buildGeeFooterHTML(navyBlue, borderColor, textColor, lightBg, totals, currentBankDetails);
+      }
+
+      html += `</div>`;
+      return html;
+    };
+
+    const buildGeeTableHTML = (page, perPage, totals, borderColor, navyBlue, textColor, lightBg, getStartIdx, getEndIdx, pageCount) => {
+      let tableHtml = `
+        <div style="padding: 0;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 10px; font-family: 'Poppins', sans-serif; table-layout: fixed;">
+            <thead>
+              <tr style="background-color: ${navyBlue};">
+                <th style="padding: 6px 4px; text-align: left; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: white; font-weight: 600; width: 4%; border-right: 1px solid ${borderColor};">No.</th>
+                <th style="padding: 6px 4px; text-align: left; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: white; font-weight: 600; width: 52%; border-right: 1px solid ${borderColor};">Description</th>
+                <th style="padding: 6px 4px; text-align: center; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: white; font-weight: 600; width: 10%; border-right: 1px solid ${borderColor};">HSN/SAC</th>
+                <th style="padding: 6px 4px; text-align: center; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: white; font-weight: 600; width: 8%; border-right: 1px solid ${borderColor};">Qty</th>
+                <th style="padding: 6px 4px; text-align: right; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: white; font-weight: 600; width: 13%; border-right: 1px solid ${borderColor};">Rate (₹)</th>
+                <th style="padding: 6px 4px; text-align: right; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: white; font-weight: 600; width: 13%;">Amount (₹)</th>
+               </tr>
+            </thead>
+            <tbody>
+      `;
+
+      const startIdx = getStartIdx(page);
+      const endIdx = getEndIdx(page);
+
+      for (let i = startIdx; i < endIdx; i++) {
+        const material = formData.materials[i];
+        const desc = material.description;
+        const truncDesc = desc.length > 80 ? desc.substring(0, 80) + '...' : desc;
+        const isEven = i % 2 === 0;
+        const bgColor = isEven ? 'white' : lightBg;
+        tableHtml += `
+          <tr style="background-color: ${bgColor}; border-bottom: 1px solid ${borderColor}; height: 30px;">
+            <td style="padding: 5px 4px; text-align: center; color: ${textColor}; font-size: 10px; border-right: 1px solid ${borderColor};">${i + 1}</td>
+            <td style="padding: 5px 4px; color: ${textColor}; font-size: 10px; border-right: 1px solid ${borderColor};" title="${desc}">${truncDesc}</td>
+            <td style="padding: 5px 4px; text-align: center; color: ${textColor}; font-size: 10px; border-right: 1px solid ${borderColor};">${material.hsn}</td>
+            <td style="padding: 5px 4px; text-align: center; color: ${textColor}; font-size: 10px; border-right: 1px solid ${borderColor};">${material.quantity}</td>
+            <td style="padding: 5px 4px; text-align: right; color: ${textColor}; font-size: 10px; border-right: 1px solid ${borderColor};">${formatNumber(material.rate)}</td>
+            <td style="padding: 5px 4px; text-align: right; color: ${navyBlue}; font-size: 10px; font-weight: 600;">${formatNumber(material.amount)}</td>
+           </tr>
+        `;
+      }
+
+      const currentRows = endIdx - startIdx;
+      const remainingRows = perPage - currentRows;
+
+      for (let i = 0; i < remainingRows; i++) {
+        const bgColor = (endIdx + i) % 2 === 0 ? 'white' : lightBg;
+        tableHtml += `
+          <tr style="height: 30px; border-bottom: 1px solid ${borderColor}; background-color: ${bgColor};">
+            <td style="padding: 5px 4px; text-align: center; color: ${textColor}; font-size: 10px; border-right: 1px solid ${borderColor};">${endIdx + i + 1}</td>
+            <td style="border-right: 1px solid ${borderColor};"></td>
+            <td style="border-right: 1px solid ${borderColor};"></td>
+            <td style="border-right: 1px solid ${borderColor};"></td>
+            <td style="border-right: 1px solid ${borderColor};"></td>
+            <td style=""></td>
+           </tr>
+        `;
+      }
+
+      if (page === pageCount - 1 && formData.additionalServices.length > 0) {
+        tableHtml += `
+          <tr style="background-color: ${lightBg}; border-top: 1px solid ${borderColor}; border-bottom: 1px solid ${borderColor};">
+            <td colspan="6" style="padding: 5px 4px; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: ${navyBlue}; font-weight: 600;">Additional Services (Excl. GST)</td>
+           </tr>
+        `;
+        formData.additionalServices.forEach((service, index) => {
+          const bgColor = index % 2 === 0 ? 'white' : lightBg;
+          tableHtml += `
+            <tr style="background-color: ${bgColor}; border-bottom: 1px solid ${borderColor}; height: 30px;">
+              <td style="padding: 5px 4px; text-align: center; color: ${textColor}; font-size: 10px; border-right: 1px solid ${borderColor};">${index + 1}</td>
+              <td colspan="4" style="padding: 5px 4px; color: ${textColor}; font-size: 10px; border-right: 1px solid ${borderColor};">${service.description}</td>
+              <td style="padding: 5px 4px; text-align: right; color: ${navyBlue}; font-size: 10px; font-weight: 600;">${formatNumber(service.amount)}</td>
+             </tr>
+          `;
+        });
+      }
+
+      if (page === pageCount - 1) {
+        tableHtml += `
+          <tr style="background-color: ${lightBg}; border-top: 1px solid ${borderColor};">
+            <td colspan="5" style="padding: 6px 4px; text-align: right; font-size: 10px; font-weight: 600; color: ${navyBlue}; border-right: 1px solid ${borderColor};">Sub Total</td>
+            <td style="padding: 6px 4px; text-align: right; font-size: 10px; font-weight: 700; color: ${navyBlue};">₹ ${formatNumber(totals.subTotal)}</td>
+           </tr>
+        `;
+
+        if (gstType === "GST") {
+          tableHtml += `
+            <tr style="background-color: white; border-bottom: 1px solid ${borderColor};">
+              <td colspan="5" style="padding: 5px 4px; text-align: right; font-size: 10px; color: ${textColor}; border-right: 1px solid ${borderColor};">CGST (${formData.cgstPercentage}%)</td>
+              <td style="padding: 5px 4px; text-align: right; font-size: 10px; color: ${textColor};">₹ ${formatNumber(totals.cgstAmount)}</td>
+             </tr>
+            <tr style="background-color: ${lightBg}; border-bottom: 1px solid ${borderColor};">
+              <td colspan="5" style="padding: 5px 4px; text-align: right; font-size: 10px; color: ${textColor}; border-right: 1px solid ${borderColor};">SGST (${formData.sgstPercentage}%)</td>
+              <td style="padding: 5px 4px; text-align: right; font-size: 10px; color: ${textColor};">₹ ${formatNumber(totals.sgstAmount)}</td>
+             </tr>
+          `;
+        } else {
+          tableHtml += `
+            <tr style="background-color: white; border-bottom: 1px solid ${borderColor};">
+              <td colspan="5" style="padding: 5px 4px; text-align: right; font-size: 10px; color: ${textColor}; border-right: 1px solid ${borderColor};">IGST (${igstPercentage}%)</td>
+              <td style="padding: 5px 4px; text-align: right; font-size: 10px; color: ${textColor};">₹ ${formatNumber(totals.igstAmount)}</td>
+             </tr>
+          `;
+        }
+
+        tableHtml += `
+          <tr style="background-color: ${lightBg}; border-bottom: 1px solid ${borderColor};">
+            <td colspan="5" style="padding: 5px 4px; text-align: right; font-size: 10px; color: ${textColor}; border-right: 1px solid ${borderColor};">Round Off</td>
+            <td style="padding: 5px 4px; text-align: right; font-size: 10px; color: ${textColor};">${totals.roundOff > 0 ? '+' : ''}${formatNumberWithDecimal(totals.roundOff)}</td>
+           </tr>
+          <tr style="background-color: ${navyBlue};">
+            <td colspan="5" style="padding: 8px 4px; text-align: right; font-size: 12px; font-weight: 700; color: white; border-right: 1px solid rgba(255,255,255,0.2);">Grand Total</td>
+            <td style="padding: 8px 4px; text-align: right; font-size: 12px; font-weight: 700; color: white;">₹ ${formatNumber(totals.grandTotalWithRoundOff)}</td>
+           </tr>
+        `;
+      }
+
+      tableHtml += `</tbody></table></div>`;
+      return tableHtml;
+    };
+
+    const buildGeeFooterHTML = (navyBlue, borderColor, textColor, lightBg, totals, currentBankDetails) => {
+      return `
+        <div style="margin-top: 0; border-top: 1px solid ${borderColor};">
+          <div style="padding: 6px 12px; background: ${lightBg}; border-bottom: 1px solid ${borderColor}; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 9px; color: ${textColor};"><span style="font-weight: 600; color: ${navyBlue};">Amount in Words: </span>${numberToWords(totals.grandTotalWithRoundOff)}</div>
+            <div style="font-size: 8px; color: ${textColor}; font-style: italic;">E. & O.E</div>
+          </div>
+          <div style="display: flex;">
+            <div style="flex: 1; padding: 6px 12px; background: white; border-right: 1px solid ${borderColor};">
+              <div style="font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: ${navyBlue}; font-weight: 600; margin-bottom: 5px;">Bank Details</div>
+              <div style="font-size: 9px; color: ${textColor}; line-height: 1.6;">
+                <div><span style="font-weight: 600; color: ${navyBlue};">Account Name:</span> ${currentBankDetails.accountName}</div>
+                <div><span style="font-weight: 600; color: ${navyBlue};">Account No:</span> ${currentBankDetails.accountNumber}</div>
+                <div><span style="font-weight: 600; color: ${navyBlue};">Bank:</span> ${currentBankDetails.bank}</div>
+                <div><span style="font-weight: 600; color: ${navyBlue};">Branch:</span> ${currentBankDetails.branch}</div>
+                <div><span style="font-weight: 600; color: ${navyBlue};">IFSC:</span> ${currentBankDetails.ifscCode}</div>
+                <div><span style="font-weight: 600; color: ${navyBlue};">G-Pay:</span> ${currentBankDetails.gpayNumber}</div>
+              </div>
+            </div>
+            <div style="flex: 1; padding: 6px 12px; background: ${lightBg}; display: flex; flex-direction: column; justify-content: space-between; min-height: 90px;">
+              <div style="font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: ${navyBlue}; font-weight: 600;">For ${formData.companyName}</div>
+              <div style="font-size: 9px; color: ${textColor}; text-align: right;">Authorized Signatory</div>
+            </div>
+          </div>
+          <div style="background-color: ${navyBlue}; padding: 5px 12px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: rgba(255,255,255,0.9); font-size: 8px; letter-spacing: 1px;">SUBJECT TO ${(formData.companyState || '').toUpperCase()} JURISDICTION</span>
+            <span style="color: rgba(255,255,255,0.9); font-size: 8px; letter-spacing: 1px;">COMPUTER GENERATED INVOICE</span>
+          </div>
+        </div>
+      `;
+    };
+
+    let fullHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Invoice Preview</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+          * {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
+          body {
+            background: #e5e7eb;
+            display: flex;
+            justify-content: center;
+            padding: 15px;
+          }
+          .preview-container {
+            background: white;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+          }
+        </style>
+      </head>
+      <body>
+        <div class="preview-container">
+    `;
+
+    for (let page = 0; page < pageCount; page++) {
+      if (page > 0) {
+        fullHtml += `<div style="page-break-before: always; margin-top: 10px;"></div>`;
+      }
+      if (isFaizan) {
+        fullHtml += buildFaizanPageHTML(page);
+      } else {
+        fullHtml += buildGeePageHTML(page);
+      }
+    }
+
+    fullHtml += `
+        </div>
+      </body>
+      </html>
+    `;
+
+    return fullHtml;
+  };
+
+  const handlePreview = () => {
+    if (formData.materials.length === 0) {
+      showNotification("Please add at least one material to preview invoice", "error");
+      return;
+    }
+    const html = generatePreviewHTML();
+    setPreviewHtml(html);
+    setPreviewOpen(true);
+  };
+
   const generatePDF = async () => {
     try {
       if (formData.materials.length === 0) {
@@ -734,17 +1289,15 @@ const InvoiceGenerator = () => {
         return;
       }
 
-      // Check if bank details are needed for Faizan company
-      if (isFaizanCompany() && !bankDetails.accountNumber) {
+      const currentBankDetails = getCurrentBankDetails();
+      if (!currentBankDetails.accountNumber) {
         setBankDialogOpen(true);
         return;
       }
 
-      // Save invoice data to Firebase first
       const saved = await saveInvoiceToFirebase();
       if (!saved) return;
 
-      // Create a container for the PDF content
       const container = document.createElement("div");
       container.style.position = "fixed";
       container.style.left = "-10000px";
@@ -761,163 +1314,171 @@ const InvoiceGenerator = () => {
         format: "a4",
       });
 
-      // Determine rows per page based on company
-      const materialsPerPage = isFaizanCompany() ? 10 : 13;
-      const pageCount = Math.ceil(formData.materials.length / materialsPerPage);
+      const isFaizan = isFaizanCompany();
+      const rowsPerPage = 18; // Increased rows per page with reduced padding
+      const pageCount = Math.ceil(formData.materials.length / rowsPerPage);
+      const getStartIdx = (page) => page * rowsPerPage;
+      const getEndIdx = (page) => Math.min((page + 1) * rowsPerPage, formData.materials.length);
       const totals = calculateTotals();
+      const validPodcEntries = podcEntries.filter(entry => entry.number || entry.date);
+      const currentBankDetailsForFooter = getCurrentBankDetails();
 
-      // Determine theme color based on company
-      const themeColor = isFaizanCompany() ? "#302c3a" : "#001F3F";
-      const secondaryColor = isFaizanCompany() ? "#E8F5E9" : "#F5F7FA";
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // Wait for images to load
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      const preloadImage = (src) => new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = src;
+      });
 
-      for (let page = 0; page < pageCount; page++) {
-        if (page > 0) {
-          pdf.addPage();
+      if (companyLogo && !logoError) {
+        await preloadImage(companyLogo);
+      }
+
+      const renderToCanvas = async (element) => {
+        const tempContainer = document.createElement("div");
+        tempContainer.style.position = "fixed";
+        tempContainer.style.left = "-10000px";
+        tempContainer.style.top = "0";
+        tempContainer.style.fontFamily = "'Poppins', sans-serif";
+        tempContainer.appendChild(element);
+        document.body.appendChild(tempContainer);
+
+        element.getBoundingClientRect();
+
+        try {
+          const canvas = await html2canvas(element, {
+            scale: 2.5,
+            useCORS: true,
+            allowTaint: false,
+            backgroundColor: "#ffffff",
+            width: element.offsetWidth,
+            height: element.offsetHeight,
+            scrollX: 0,
+            scrollY: 0,
+            windowWidth: element.scrollWidth,
+            windowHeight: element.scrollHeight,
+            imageTimeout: 15000,
+            logging: false,
+          });
+          return canvas;
+        } finally {
+          document.body.removeChild(tempContainer);
         }
+      };
 
-        // Create page container with border and adjusted padding
+      const addCanvasToPdf = (pdf, canvas) => {
+        const imgData = canvas.toDataURL("image/jpeg", 1.0);
+        const imgWidth = 190;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        pdf.addImage(imgData, "JPEG", 10, 10, imgWidth, imgHeight, undefined, "FAST");
+      };
+
+      // Build Faizan Page Element
+      const buildFaizanPageElement = (page) => {
+        const maroon = "#800020";
+        const borderColor = "#000000";
+        
         const pageDiv = document.createElement("div");
-        pageDiv.style.width = "200mm";
-        pageDiv.style.padding = "8mm 6mm";
+        pageDiv.style.width = "210mm";
+        pageDiv.style.padding = "0";
         pageDiv.style.margin = "0";
         pageDiv.style.backgroundColor = "white";
         pageDiv.style.boxSizing = "border-box";
         pageDiv.style.fontFamily = "'Poppins', sans-serif";
-        pageDiv.style.minHeight = "285mm";
-        pageDiv.style.border = `2px solid ${themeColor}`;
-        pageDiv.style.borderRadius = "3px";
+        pageDiv.style.border = `1px solid ${borderColor}`;
 
-        // Add headers (only on first page)
         if (page === 0) {
           const headerDiv = document.createElement("div");
-          headerDiv.className = "pdf-header";
-          headerDiv.style.marginBottom = "10px";
+          headerDiv.style.marginBottom = "6px";
 
           const companyHeader = document.createElement("div");
           companyHeader.style.display = "flex";
           companyHeader.style.justifyContent = "space-between";
           companyHeader.style.alignItems = "flex-start";
-          companyHeader.style.marginBottom = "10px";
-          companyHeader.style.paddingBottom = "6px";
-          companyHeader.style.borderBottom = `1.5px solid ${themeColor}`;
-          companyHeader.style.fontFamily = "'Poppins', sans-serif";
+          companyHeader.style.marginBottom = "6px";
+          companyHeader.style.padding = "8px 12px 0 12px";
 
-          // Left side - Logo
           const leftSection = document.createElement("div");
           leftSection.style.flex = "1";
           leftSection.style.display = "flex";
           leftSection.style.alignItems = "center";
 
-          // Create logo image element
-          const logoImg = document.createElement("img");
-          
-          // Use company logo if available
           if (companyLogo && !logoError) {
+            const logoImg = document.createElement("img");
             logoImg.src = companyLogo;
+            logoImg.crossOrigin = "anonymous";
             logoImg.alt = "Company Logo";
-            logoImg.style.height = "150px";
+            logoImg.style.height = "70px";
             logoImg.style.width = "auto";
-            logoImg.style.display = "block";
             logoImg.style.objectFit = "contain";
             leftSection.appendChild(logoImg);
           } else {
-            // Create a text placeholder
             const textPlaceholder = document.createElement("div");
-            textPlaceholder.style.height = "130px";
-            textPlaceholder.style.width = "130px";
-            textPlaceholder.style.backgroundColor = secondaryColor;
-            textPlaceholder.style.display = "flex";
-            textPlaceholder.style.alignItems = "center";
-            textPlaceholder.style.justifyContent = "center";
-            textPlaceholder.style.border = `1px solid ${themeColor}`;
-            textPlaceholder.style.borderRadius = "4px";
-            textPlaceholder.style.color = themeColor;
-            textPlaceholder.style.fontWeight = "bold";
-            textPlaceholder.style.fontSize = "24px";
+            textPlaceholder.style.cssText = `height:70px;width:70px;background-color:#F3F4F6;display:flex;align-items:center;justify-content:center;border:1px solid ${borderColor};border-radius:6px;color:${maroon};font-weight:bold;font-size:24px;`;
             textPlaceholder.textContent = formData.companyName?.charAt(0)?.toUpperCase() || "C";
             leftSection.appendChild(textPlaceholder);
           }
 
-          // Right side - Invoice details
           const rightSection = document.createElement("div");
           rightSection.style.flex = "1";
           rightSection.style.textAlign = "right";
-          rightSection.style.fontFamily = "'Poppins', sans-serif";
 
           const invoiceTitle = document.createElement("h2");
           invoiceTitle.textContent = "TAX INVOICE";
-          invoiceTitle.style.margin = "0 0 8px 0";
-          invoiceTitle.style.fontSize = "20px";
-          invoiceTitle.style.color = themeColor;
-          invoiceTitle.style.fontWeight = "600";
-          invoiceTitle.style.fontFamily = "'Poppins', sans-serif";
+          invoiceTitle.style.cssText = `margin:0 0 4px 0;font-size:22px;color:${maroon};font-weight:700;`;
 
-          const invoiceDetails = document.createElement("div");
-          invoiceDetails.style.fontSize = "11px";
-          invoiceDetails.style.lineHeight = "1.5";
-          invoiceDetails.style.color = themeColor;
-          invoiceDetails.style.fontFamily = "'Poppins', sans-serif";
-
-          invoiceDetails.innerHTML = `
-            <div><strong>Invoice No:</strong> ${formData.invoiceNumber}</div>
-            <div><strong>Date:</strong> ${new Date(formData.invoiceDate).toLocaleDateString("en-IN")}</div>
-            <div><strong>PO Number:</strong> ${formData.poNumber}</div>
-            <div><strong>DC No:</strong> ${formData.DCNO}</div>
-            <div><strong>DC Date:</strong> ${formData.DCDate}</div>
+          let invoiceDetailsHTML = `
+            <div style="font-size:12px;line-height:1.4;color:#333333;">
+              <div><strong>Invoice No:</strong> ${formData.invoiceNumber}</div>
+              <div><strong>Date:</strong> ${new Date(formData.invoiceDate).toLocaleDateString("en-IN")}</div>
+            </div>
           `;
 
           rightSection.appendChild(invoiceTitle);
-          rightSection.appendChild(invoiceDetails);
+          rightSection.innerHTML += invoiceDetailsHTML;
           companyHeader.appendChild(leftSection);
           companyHeader.appendChild(rightSection);
           headerDiv.appendChild(companyHeader);
 
-          // Client details section
           const clientDetails = document.createElement("div");
-          clientDetails.style.display = "flex";
-          clientDetails.style.justifyContent = "space-between";
-          clientDetails.style.marginTop = "10px";
-          clientDetails.style.padding = "10px";
-          clientDetails.style.backgroundColor = secondaryColor;
-          clientDetails.style.border = `1px solid ${themeColor}`;
-          clientDetails.style.borderRadius = "4px";
-          clientDetails.style.fontSize = "11px";
-          clientDetails.style.fontFamily = "'Poppins', sans-serif";
-          clientDetails.style.lineHeight = "1.4";
+          clientDetails.style.cssText = `display:flex;justify-content:space-between;margin-top:6px;padding:8px 12px;background-color:white;border-top:1px solid ${borderColor};font-size:11px;line-height:1.4;`;
 
           const billTo = document.createElement("div");
           billTo.style.flex = "1";
-          billTo.style.fontFamily = "'Poppins', sans-serif";
-
           billTo.innerHTML = `
-            <h3 style="margin:0 0 6px 0; color:${themeColor}; font-size:13px; font-weight:600; font-family: 'Poppins', sans-serif;">From:</h3>
-            <div style="color:${themeColor}; font-family: 'Poppins', sans-serif;">
-              <div style="font-weight:600; margin-bottom:3px;">${formData.companyName}</div>
+            <div style="color:#333333;">
+              <div style="font-weight:700;margin-bottom:4px;color:${maroon};font-size:13px;">${formData.companyName}</div>
               <div style="margin-bottom:3px;">${formData.companyAddress}</div>
               <div style="margin-bottom:3px;"><strong>Email:</strong> ${formData.companyemail}</div>
               <div style="margin-bottom:3px;"><strong>GSTIN:</strong> ${formData.companyGSTIN}</div>
               <div style="margin-bottom:3px;"><strong>Contact:</strong> ${formData.companyContact}</div>
-              <div style="margin-top:4px; font-style:italic; font-size:10px;"><em>${formData.companyDescription}</em></div>
-            </div>
-          `;
+              <div style="margin-top:4px;font-style:italic;font-size:10px;">${formData.companyDescription}</div>
+            </div>`;
 
           const shipTo = document.createElement("div");
-          shipTo.style.flex = "1";
-          shipTo.style.marginLeft = "20px";
-          shipTo.style.fontFamily = "'Poppins', sans-serif";
-
+          shipTo.style.cssText = "flex:1;margin-left:20px;";
+          
+          let podcHTML = "";
+          if (validPodcEntries.length > 0) {
+            podcHTML = `<div style="margin-top:6px;padding-top:5px;border-top:1px dashed ${borderColor};">`;
+            validPodcEntries.forEach((entry, idx) => {
+              podcHTML += `<div style="font-size:10px;margin-bottom:2px;"><strong>PO/DC No ${idx + 1}:</strong> ${entry.number || '-'} &nbsp;&nbsp;<strong>Date:</strong> ${entry.date || '-'}</div>`;
+            });
+            podcHTML += `</div>`;
+          }
+          
           shipTo.innerHTML = `
-            <h3 style="margin:0 0 6px 0; color:${themeColor}; font-size:13px; font-weight:600; font-family: 'Poppins', sans-serif;">To:</h3>
-            <div style="color:${themeColor}; font-family: 'Poppins', sans-serif;">
-              <div style="font-weight:600; margin-bottom:3px;">${formData.clientName}</div>
+            <h3 style="margin:0 0 4px 0;color:${maroon};font-size:13px;font-weight:700;">To:</h3>
+            <div style="color:#333333;">
+              <div style="font-weight:700;margin-bottom:4px;color:${maroon};">${formData.clientName}</div>
               <div style="margin-bottom:3px;">${formData.clientAddress}</div>
               <div style="margin-bottom:3px;"><strong>GSTIN:</strong> ${formData.clientGSTIN}</div>
               <div style="margin-bottom:3px;"><strong>Contact:</strong> ${formData.clientContact}</div>
-            </div>
-          `;
+              ${podcHTML}
+            </div>`;
 
           clientDetails.appendChild(billTo);
           clientDetails.appendChild(shipTo);
@@ -925,362 +1486,501 @@ const InvoiceGenerator = () => {
           pageDiv.appendChild(headerDiv);
         }
 
-        // Create material table
-        const table = document.createElement("table");
-        table.style.width = "100%";
-        table.style.borderCollapse = "collapse";
-        table.style.fontSize = "10px";
-        table.style.marginTop = page === 0 ? "10px" : "0";
-        table.style.color = themeColor;
-        table.style.fontFamily = "'Poppins', sans-serif";
-        table.style.tableLayout = "fixed";
+        const table = buildFaizanTableElement(page, rowsPerPage, totals, borderColor, maroon, getStartIdx, getEndIdx, pageCount);
+        pageDiv.appendChild(table);
 
-        // Add table header
+        if (page === pageCount - 1) {
+          const footer = buildFaizanFooterElement(maroon, borderColor, totals, currentBankDetailsForFooter);
+          pageDiv.appendChild(footer);
+        }
+
+        return pageDiv;
+      };
+
+      const buildFaizanTableElement = (page, perPage, totals, borderColor, maroon, getStartIdx, getEndIdx, pageCount) => {
+        const table = document.createElement("table");
+        table.style.cssText = `width:100%;border-collapse:collapse;font-size:11px;color:#333333;font-family:'Poppins',sans-serif;table-layout:fixed;`;
+
         const thead = document.createElement("thead");
-        thead.style.backgroundColor = themeColor;
-        thead.style.color = "white";
-        thead.style.fontFamily = "'Poppins', sans-serif";
+        thead.style.backgroundColor = "white";
         thead.innerHTML = `
-          <tr style="font-family: 'Poppins', sans-serif; height: 22px;">
-            <th style="border:1px solid ${themeColor};padding:5px;width:4%; font-family: 'Poppins', sans-serif; font-size:10px;">S.No.</th>
-            <th style="border:1px solid ${themeColor};padding:5px;width:52%; font-family: 'Poppins', sans-serif; font-size:10px;">Material Description</th>
-            <th style="border:1px solid ${themeColor};padding:5px;width:10%; font-family: 'Poppins', sans-serif; font-size:10px;">HSN/SAC</th>
-            <th style="border:1px solid ${themeColor};padding:5px;width:8%; font-family: 'Poppins', sans-serif; font-size:10px;">Qty.</th>
-            <th style="border:1px solid ${themeColor};padding:5px;width:13%; font-family: 'Poppins', sans-serif; font-size:10px;">Rate (₹)</th>
-            <th style="border:1px solid ${themeColor};padding:5px;width:13%; font-family: 'Poppins', sans-serif; font-size:10px;">Amount (₹)</th>
-          </tr>
+          <tr style="height:32px;">
+            <th style="border:1px solid ${borderColor};padding:6px 4px;width:4%;font-size:11px;color:${maroon};font-weight:700;">S.No.</th>
+            <th style="border:1px solid ${borderColor};padding:6px 4px;width:52%;font-size:11px;color:${maroon};font-weight:700;">Material Description</th>
+            <th style="border:1px solid ${borderColor};padding:6px 4px;width:10%;font-size:11px;color:${maroon};font-weight:700;">HSN/SAC</th>
+            <th style="border:1px solid ${borderColor};padding:6px 4px;width:8%;font-size:11px;color:${maroon};font-weight:700;">Qty.</th>
+            <th style="border:1px solid ${borderColor};padding:6px 4px;width:13%;font-size:11px;color:${maroon};font-weight:700;">Rate (₹)</th>
+            <th style="border:1px solid ${borderColor};padding:6px 4px;width:13%;font-size:11px;color:${maroon};font-weight:700;">Amount (₹)</th>
+           </tr>
         `;
         table.appendChild(thead);
 
-        // Add table body
         const tbody = document.createElement("tbody");
-        tbody.style.fontFamily = "'Poppins', sans-serif";
-        const startIdx = page * materialsPerPage;
-        const endIdx = Math.min(
-          startIdx + materialsPerPage,
-          formData.materials.length,
-        );
+        const startIdx = getStartIdx(page);
+        const endIdx = getEndIdx(page);
 
-        // Add material rows
         for (let i = startIdx; i < endIdx; i++) {
           const material = formData.materials[i];
+          const desc = material.description;
+          const truncDesc = desc.length > 80 ? desc.substring(0, 80) + '...' : desc;
           const row = document.createElement("tr");
-          row.style.height = "20px";
-          row.style.backgroundColor = i % 2 === 0 ? secondaryColor : "white";
-          row.style.fontFamily = "'Poppins', sans-serif";
-
-          const description = material.description;
-          const truncatedDescription = description.length > 120 ?
-            description.substring(0, 120) + '...' : description;
-
+          row.style.cssText = `height:30px;background-color:${i % 2 === 0 ? '#F9FAFB' : 'white'};`;
           row.innerHTML = `
-            <td style="border:1px solid ${themeColor};padding:5px;text-align:center;color:${themeColor}; font-family: 'Poppins', sans-serif; font-size:10px; vertical-align:top;">${i + 1}.</td>
-            <td style="border:1px solid ${themeColor};padding:5px;color:${themeColor}; font-family: 'Poppins', sans-serif; font-size:10px; vertical-align:top; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${description}">${truncatedDescription}</td>
-            <td style="border:1px solid ${themeColor};padding:5px;text-align:center;color:${themeColor}; font-family: 'Poppins', sans-serif; font-size:10px; vertical-align:top;">${material.hsn}</td>
-            <td style="border:1px solid ${themeColor};padding:5px;text-align:center;color:${themeColor}; font-family: 'Poppins', sans-serif; font-size:10px; vertical-align:top;">${material.quantity}</td>
-            <td style="border:1px solid ${themeColor};padding:5px;text-align:right;color:${themeColor}; font-family: 'Poppins', sans-serif; font-size:10px; vertical-align:top;">${formatNumber(material.rate)}</td>
-            <td style="border:1px solid ${themeColor};padding:5px;text-align:right;font-weight:bold;color:${themeColor}; font-family: 'Poppins', sans-serif; font-size:10px; vertical-align:top;">${formatNumber(material.amount)}</td>
+            <td style="border:1px solid ${borderColor};padding:5px 4px;text-align:center;font-size:11px;vertical-align:middle;">${i + 1}</td>
+            <td style="border:1px solid ${borderColor};padding:5px 4px;font-size:11px;vertical-align:middle;" title="${desc}">${truncDesc}</td>
+            <td style="border:1px solid ${borderColor};padding:5px 4px;text-align:center;font-size:11px;vertical-align:middle;">${material.hsn}</td>
+            <td style="border:1px solid ${borderColor};padding:5px 4px;text-align:center;font-size:11px;vertical-align:middle;">${material.quantity}</td>
+            <td style="border:1px solid ${borderColor};padding:5px 4px;text-align:right;font-size:11px;vertical-align:middle;">${formatNumber(material.rate)}</td>
+            <td style="border:1px solid ${borderColor};padding:5px 4px;text-align:right;font-weight:bold;font-size:11px;vertical-align:middle;">${formatNumber(material.amount)}</td>
           `;
           tbody.appendChild(row);
         }
 
-        // Add empty rows if needed (only on last page)
-        if (page === pageCount - 1) {
-          const remainingRows = materialsPerPage - (endIdx - startIdx);
-          for (let i = 0; i < remainingRows; i++) {
-            const emptyRow = document.createElement("tr");
-            emptyRow.style.height = "20px";
-            emptyRow.style.fontFamily = "'Poppins', sans-serif";
-            emptyRow.innerHTML = `
-              <td style="border:1px solid ${themeColor};padding:5px;color:${themeColor}; font-family: 'Poppins', sans-serif; font-size:10px;">${endIdx + i + 1}.</td>
-              <td style="border:1px solid ${themeColor};padding:5px; font-family: 'Poppins', sans-serif;"></td>
-              <td style="border:1px solid ${themeColor};padding:5px; font-family: 'Poppins', sans-serif;"></td>
-              <td style="border:1px solid ${themeColor};padding:5px; font-family: 'Poppins', sans-serif;"></td>
-              <td style="border:1px solid ${themeColor};padding:5px; font-family: 'Poppins', sans-serif;"></td>
-              <td style="border:1px solid ${themeColor};padding:5px; font-family: 'Poppins', sans-serif;"></td>
-            `;
-            tbody.appendChild(emptyRow);
-          }
-        }
+        const currentRows = endIdx - startIdx;
+        const remainingRows = perPage - currentRows;
 
-        // Add additional services on last page
-        if (page === pageCount - 1 && formData.additionalServices.length > 0) {
-          // Add separator row
-          const separatorRow = document.createElement("tr");
-          separatorRow.style.backgroundColor = "#E0E0E0";
-          separatorRow.style.height = "2px";
-          separatorRow.innerHTML = `<td colspan="6" style="border:none; padding:0; background-color:${themeColor};"></td>`;
-          tbody.appendChild(separatorRow);
-
-          // Add Additional Services header
-          const servicesHeaderRow = document.createElement("tr");
-          servicesHeaderRow.style.backgroundColor = themeColor;
-          servicesHeaderRow.style.color = "white";
-          servicesHeaderRow.innerHTML = `
-            <td colspan="6" style="border:1px solid ${themeColor};padding:8px;font-weight:bold;font-size:11px; font-family: 'Poppins', sans-serif;">
-              Additional Services (Excluding GST)
-            </td>
+        for (let i = 0; i < remainingRows; i++) {
+          const emptyRow = document.createElement("tr");
+          emptyRow.style.height = "30px";
+          emptyRow.style.backgroundColor = (endIdx + i) % 2 === 0 ? '#F9FAFB' : 'white';
+          emptyRow.innerHTML = `
+            <td style="border:1px solid ${borderColor};padding:5px 4px;font-size:11px;">${endIdx + i + 1}</td>
+            <td style="border:1px solid ${borderColor};padding:5px 4px;"></td>
+            <td style="border:1px solid ${borderColor};padding:5px 4px;"></td>
+            <td style="border:1px solid ${borderColor};padding:5px 4px;"></td>
+            <td style="border:1px solid ${borderColor};padding:5px 4px;"></td>
+            <td style="border:1px solid ${borderColor};padding:5px 4px;"></td>
           `;
-          tbody.appendChild(servicesHeaderRow);
-
-          // Add additional services rows
-          formData.additionalServices.forEach((service, index) => {
-            const serviceRow = document.createElement("tr");
-            serviceRow.style.backgroundColor = index % 2 === 0 ? "#FFF8E1" : "#FFF3E0";
-            serviceRow.style.height = "20px";
-            serviceRow.innerHTML = `
-              <td style="border:1px solid ${themeColor};padding:5px;text-align:center; font-family: 'Poppins', sans-serif; font-size:10px;">${index + 1}.</td>
-              <td colspan="4" style="border:1px solid ${themeColor};padding:5px; font-family: 'Poppins', sans-serif; font-size:10px;">${service.description}</td>
-              <td style="border:1px solid ${themeColor};padding:5px;text-align:right;font-weight:bold; font-family: 'Poppins', sans-serif; font-size:10px;">${formatNumber(service.amount)}</td>
-            `;
-            tbody.appendChild(serviceRow);
-          });
-
-          // Add empty rows for services if needed
-          const serviceRowsToAdd = Math.max(0, 3 - formData.additionalServices.length);
-          for (let i = 0; i < serviceRowsToAdd; i++) {
-            const emptyServiceRow = document.createElement("tr");
-            emptyServiceRow.style.height = "20px";
-            emptyServiceRow.innerHTML = `
-              <td style="border:1px solid ${themeColor};padding:5px; font-family: 'Poppins', sans-serif;">${formData.additionalServices.length + i + 1}.</td>
-              <td colspan="4" style="border:1px solid ${themeColor};padding:5px; font-family: 'Poppins', sans-serif;"></td>
-              <td style="border:1px solid ${themeColor};padding:5px; font-family: 'Poppins', sans-serif;"></td>
-            `;
-            tbody.appendChild(emptyServiceRow);
-          }
+          tbody.appendChild(emptyRow);
         }
 
-        // Add totals for last page
         if (page === pageCount - 1) {
-          // Subtotal row
+          if (formData.additionalServices.length > 0) {
+            const svcHeader = document.createElement("tr");
+            svcHeader.style.backgroundColor = maroon;
+            svcHeader.innerHTML = `<td colspan="6" style="border:1px solid ${borderColor};padding:6px 4px;font-weight:bold;font-size:11px;color:white;">Additional Services (Excluding GST)</td>`;
+            tbody.appendChild(svcHeader);
+            formData.additionalServices.forEach((service, index) => {
+              const svcRow = document.createElement("tr");
+              svcRow.style.cssText = `background-color:${index % 2 === 0 ? '#FFF8E1' : '#FFF3E0'};height:30px;`;
+              svcRow.innerHTML = `
+                <td style="border:1px solid ${borderColor};padding:5px 4px;text-align:center;font-size:11px;">${index + 1}</td>
+                <td colspan="4" style="border:1px solid ${borderColor};padding:5px 4px;font-size:11px;">${service.description}</td>
+                <td style="border:1px solid ${borderColor};padding:5px 4px;text-align:right;font-weight:bold;font-size:11px;">${formatNumber(service.amount)}</td>
+              `;
+              tbody.appendChild(svcRow);
+            });
+          }
+
           const subtotalRow = document.createElement("tr");
-          subtotalRow.style.backgroundColor = secondaryColor;
-          subtotalRow.style.fontFamily = "'Poppins', sans-serif";
-          subtotalRow.style.height = "22px";
+          subtotalRow.style.backgroundColor = "#F9FAFB";
           subtotalRow.innerHTML = `
-            <td colspan="5" style="border:1px solid ${themeColor};padding:7px;text-align:right;font-weight:bold;font-size:11px;color:${themeColor}; font-family: 'Poppins', sans-serif;">Sub Total:</td>
-            <td style="border:1px solid ${themeColor};padding:7px;font-weight:bold;font-size:11px;text-align:right;color:${themeColor}; font-family: 'Poppins', sans-serif;">₹ ${formatNumber(totals.subTotal)}</td>
+            <td colspan="5" style="border:1px solid ${borderColor};padding:6px 4px;text-align:right;font-weight:bold;font-size:11px;color:${maroon};">Sub Total:</td>
+            <td style="border:1px solid ${borderColor};padding:6px 4px;font-weight:bold;font-size:11px;text-align:right;color:${maroon};">₹ ${formatNumber(totals.subTotal)}</td>
           `;
           tbody.appendChild(subtotalRow);
 
-          // CGST row (only on materials)
-          const cgstRow = document.createElement("tr");
-          cgstRow.style.backgroundColor = "#F0F8E8";
-          cgstRow.style.fontFamily = "'Poppins', sans-serif";
-          cgstRow.style.height = "22px";
-          cgstRow.innerHTML = `
-            <td colspan="5" style="border:1px solid ${themeColor};padding:7px;text-align:right;font-weight:bold;font-size:11px;color:${themeColor}; font-family: 'Poppins', sans-serif;">CGST (${formData.cgstPercentage}%):</td>
-            <td style="border:1px solid ${themeColor};padding:7px;font-weight:bold;font-size:11px;text-align:right;color:${themeColor}; font-family: 'Poppins', sans-serif;">₹ ${formatNumber(totals.cgstAmount)}</td>
-          `;
-          tbody.appendChild(cgstRow);
+          if (gstType === "GST") {
+            const cgstRow = document.createElement("tr");
+            cgstRow.style.backgroundColor = "white";
+            cgstRow.innerHTML = `
+              <td colspan="5" style="border:1px solid ${borderColor};padding:6px 4px;text-align:right;font-weight:bold;font-size:11px;color:${maroon};">CGST (${formData.cgstPercentage}%):</td>
+              <td style="border:1px solid ${borderColor};padding:6px 4px;font-weight:bold;font-size:11px;text-align:right;color:${maroon};">₹ ${formatNumber(totals.cgstAmount)}</td>
+            `;
+            tbody.appendChild(cgstRow);
+            const sgstRow = document.createElement("tr");
+            sgstRow.style.backgroundColor = "#F9FAFB";
+            sgstRow.innerHTML = `
+              <td colspan="5" style="border:1px solid ${borderColor};padding:6px 4px;text-align:right;font-weight:bold;font-size:11px;color:${maroon};">SGST (${formData.sgstPercentage}%):</td>
+              <td style="border:1px solid ${borderColor};padding:6px 4px;font-weight:bold;font-size:11px;text-align:right;color:${maroon};">₹ ${formatNumber(totals.sgstAmount)}</td>
+            `;
+            tbody.appendChild(sgstRow);
+          } else {
+            const igstRow = document.createElement("tr");
+            igstRow.style.backgroundColor = "white";
+            igstRow.innerHTML = `
+              <td colspan="5" style="border:1px solid ${borderColor};padding:6px 4px;text-align:right;font-weight:bold;font-size:11px;color:${maroon};">IGST (${igstPercentage}%):</td>
+              <td style="border:1px solid ${borderColor};padding:6px 4px;font-weight:bold;font-size:11px;text-align:right;color:${maroon};">₹ ${formatNumber(totals.igstAmount)}</td>
+            `;
+            tbody.appendChild(igstRow);
+          }
 
-          // SGST row (only on materials)
-          const sgstRow = document.createElement("tr");
-          sgstRow.style.backgroundColor = "#F0F8E8";
-          sgstRow.style.fontFamily = "'Poppins', sans-serif";
-          sgstRow.style.height = "22px";
-          sgstRow.innerHTML = `
-            <td colspan="5" style="border:1px solid ${themeColor};padding:7px;text-align:right;font-weight:bold;font-size:11px;color:${themeColor}; font-family: 'Poppins', sans-serif;">SGST (${formData.sgstPercentage}%):</td>
-            <td style="border:1px solid ${themeColor};padding:7px;font-weight:bold;font-size:11px;text-align:right;color:${themeColor}; font-family: 'Poppins', sans-serif;">₹ ${formatNumber(totals.sgstAmount)}</td>
-          `;
-          tbody.appendChild(sgstRow);
-
-          // Round Off row
           const roundOffRow = document.createElement("tr");
-          roundOffRow.style.backgroundColor = "#E8E8E8";
-          roundOffRow.style.fontFamily = "'Poppins', sans-serif";
-          roundOffRow.style.height = "22px";
+          roundOffRow.style.backgroundColor = "#F3F4F6";
           roundOffRow.innerHTML = `
-            <td colspan="5" style="border:1px solid ${themeColor};padding:7px;text-align:right;font-weight:bold;font-size:11px;color:${themeColor}; font-family: 'Poppins', sans-serif;">Round Off:</td>
-            <td style="border:1px solid ${themeColor};padding:7px;font-weight:bold;font-size:11px;text-align:right;color:${themeColor}; font-family: 'Poppins', sans-serif;">₹ ${totals.roundOff > 0 ? '+' : ''}${formatNumberWithDecimal(totals.roundOff)}</td>
+            <td colspan="5" style="border:1px solid ${borderColor};padding:6px 4px;text-align:right;font-weight:bold;font-size:11px;color:${maroon};">Round Off:</td>
+            <td style="border:1px solid ${borderColor};padding:6px 4px;font-weight:bold;font-size:11px;text-align:right;color:${maroon};">₹ ${totals.roundOff > 0 ? '+' : ''}${formatNumberWithDecimal(totals.roundOff)}</td>
           `;
           tbody.appendChild(roundOffRow);
 
-          // Grand Total row with round off
           const grandTotalRow = document.createElement("tr");
-          grandTotalRow.style.backgroundColor = themeColor;
-          grandTotalRow.style.color = "white";
-          grandTotalRow.style.fontFamily = "'Poppins', sans-serif";
-          grandTotalRow.style.height = "24px";
+          grandTotalRow.style.backgroundColor = maroon;
           grandTotalRow.innerHTML = `
-            <td colspan="5" style="border:1px solid ${themeColor};padding:9px;text-align:right;font-weight:bold;font-size:12px; font-family: 'Poppins', sans-serif;">GRAND TOTAL (After Round Off):</td>
-            <td style="border:1px solid ${themeColor};padding:9px;font-weight:bold;font-size:12px;text-align:right; font-family: 'Poppins', sans-serif;">₹ ${formatNumber(totals.grandTotalWithRoundOff)}</td>
+            <td colspan="5" style="border:1px solid ${maroon};padding:8px 4px;text-align:right;font-weight:bold;font-size:12px;color:white;">GRAND TOTAL (After Round Off):</td>
+            <td style="border:1px solid ${maroon};padding:8px 4px;font-weight:bold;font-size:12px;text-align:right;color:white;">₹ ${formatNumber(totals.grandTotalWithRoundOff)}</td>
           `;
           tbody.appendChild(grandTotalRow);
         }
 
         table.appendChild(tbody);
-        pageDiv.appendChild(table);
+        return table;
+      };
 
-        // Add footer for last page
-        if (page === pageCount - 1) {
-          const footerDiv = document.createElement("div");
-          footerDiv.style.marginTop = "15px";
-          footerDiv.style.fontFamily = "'Poppins', sans-serif";
-          footerDiv.style.display = "flex";
-          footerDiv.style.flexDirection = "column";
+      const buildFaizanFooterElement = (maroon, borderColor, totals, currentBankDetails) => {
+        const footerDiv = document.createElement("div");
+        footerDiv.style.marginTop = "6px";
 
-          // Amount in words
-          const amountInWordsDiv = document.createElement("div");
-          amountInWordsDiv.style.border = `1.5px solid ${themeColor}`;
-          amountInWordsDiv.style.padding = "10px";
-          amountInWordsDiv.style.fontSize = "10px";
-          amountInWordsDiv.style.backgroundColor = secondaryColor;
-          amountInWordsDiv.style.borderRadius = "4px 4px 0 0";
-          amountInWordsDiv.style.color = themeColor;
-          amountInWordsDiv.style.minHeight = "45px";
-          amountInWordsDiv.style.fontFamily = "'Poppins', sans-serif";
-          amountInWordsDiv.style.lineHeight = "1.4";
-          amountInWordsDiv.innerHTML = `
-            <div style="font-family: 'Poppins', sans-serif;"><strong>Amount Chargeable (in words):</strong> ${numberToWords(totals.grandTotalWithRoundOff)}</div>
-            <div style="text-align:right; margin-top:5px; font-weight:bold; color:${themeColor}; font-size:10px; font-family: 'Poppins', sans-serif;">E. & O.E</div>
-          `;
-          footerDiv.appendChild(amountInWordsDiv);
+        const amountInWordsDiv = document.createElement("div");
+        amountInWordsDiv.style.cssText = `border:1px solid ${borderColor};border-top:none;padding:6px 8px;font-size:10px;background-color:white;color:#333333;display:flex;justify-content:space-between;align-items:center;`;
+        amountInWordsDiv.innerHTML = `
+          <div><strong style="color:${maroon};">Amount Chargeable (in words):</strong> ${numberToWords(totals.grandTotalWithRoundOff)}</div>
+          <div style="font-weight:bold;font-size:10px;color:#6B7280;">E. & O.E</div>
+        `;
+        footerDiv.appendChild(amountInWordsDiv);
 
-          // Bank details and signature section
-          const bottomSection = document.createElement("div");
-          bottomSection.style.display = "flex";
-          bottomSection.style.justifyContent = "space-between";
-          bottomSection.style.alignItems = "flex-start";
-          bottomSection.style.gap = "20px";
-          bottomSection.style.marginTop = "5px";
+        const bottomSection = document.createElement("div");
+        bottomSection.style.cssText = "display:flex;justify-content:space-between;align-items:flex-start;gap:10px;";
 
-          // Bank details (only for Faizan company)
-          if (isFaizanCompany()) {
-            const bankDetailsDiv = document.createElement("div");
-            bankDetailsDiv.style.flex = "1";
-            bankDetailsDiv.style.border = `1.5px solid ${themeColor}`;
-            bankDetailsDiv.style.borderTop = "none";
-            bankDetailsDiv.style.padding = "10px";
-            bankDetailsDiv.style.fontSize = "9px";
-            bankDetailsDiv.style.backgroundColor = secondaryColor;
-            bankDetailsDiv.style.borderRadius = "0 0 0 4px";
-            bankDetailsDiv.style.fontFamily = "'Poppins', sans-serif";
+        const bankDetailsDiv = document.createElement("div");
+        bankDetailsDiv.style.cssText = `flex:1;border:1px solid ${borderColor};border-top:none;padding:6px 8px;font-size:9px;background-color:white;`;
+        bankDetailsDiv.innerHTML = `
+          <div style="font-weight:bold;margin-bottom:4px;color:${maroon};font-size:10px;">Bank Details:</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+            <div style="color:#333333;font-size:9px;"><strong>Account Name:</strong> ${currentBankDetails.accountName}</div>
+            <div style="color:#333333;font-size:9px;"><strong>Account No:</strong> ${currentBankDetails.accountNumber}</div>
+            <div style="color:#333333;font-size:9px;"><strong>Bank:</strong> ${currentBankDetails.bank}</div>
+            <div style="color:#333333;font-size:9px;"><strong>Branch:</strong> ${currentBankDetails.branch}</div>
+            <div style="color:#333333;font-size:9px;"><strong>IFSC:</strong> ${currentBankDetails.ifscCode}</div>
+            <div style="color:#333333;font-size:9px;"><strong>G-Pay:</strong> ${currentBankDetails.gpayNumber}</div>
+          </div>
+        `;
 
-            bankDetailsDiv.innerHTML = `
-              <div style="font-weight:bold; margin-bottom:6px; color:${themeColor};">Bank Details:</div>
-              <div style="margin-bottom:2px;"><strong>Account Name:</strong> ${bankDetails.accountName}</div>
-              <div style="margin-bottom:2px;"><strong>Account No:</strong> ${bankDetails.accountNumber}</div>
-              <div style="margin-bottom:2px;"><strong>Bank:</strong> ${bankDetails.bank}</div>
-              <div style="margin-bottom:2px;"><strong>Branch:</strong> ${bankDetails.branch}</div>
-              <div style="margin-bottom:2px;"><strong>IFSC:</strong> ${bankDetails.ifscCode}</div>
-              <div style="margin-top:4px;"><strong>G-Pay:</strong> ${bankDetails.gpayNumber}</div>
-            `;
+        const signatureDiv = document.createElement("div");
+        signatureDiv.style.cssText = `flex:1;border:1px solid ${borderColor};border-top:none;padding:8px;font-size:10px;background:white;text-align:center;position:relative;min-height:90px;`;
+        signatureDiv.innerHTML = `
+          <div style="color:${maroon};position:absolute;top:12px;right:12px;"><strong style="font-size:11px;">For ${formData.companyName}</strong></div>
+          <div style="font-size:9px;color:#6B7280;position:absolute;bottom:12px;right:12px;text-align:right;">Authorized Signatory</div>
+        `;
 
-            bottomSection.appendChild(bankDetailsDiv);
-          }
+        bottomSection.appendChild(bankDetailsDiv);
+        bottomSection.appendChild(signatureDiv);
+        footerDiv.appendChild(bottomSection);
 
-          // Signature box
-          const signatureDiv = document.createElement("div");
-          signatureDiv.style.flex = isFaizanCompany() ? "1" : "2";
-          signatureDiv.style.border = `1.5px solid ${themeColor}`;
-          signatureDiv.style.borderTop = "none";
-          signatureDiv.style.padding = "12px";
-          signatureDiv.style.fontSize = "10px";
-          signatureDiv.style.backgroundColor = "white";
-          signatureDiv.style.textAlign = "center";
-          signatureDiv.style.borderRadius = isFaizanCompany() ? "0 0 4px 0" : "0 0 4px 4px";
-          signatureDiv.style.fontFamily = "'Poppins', sans-serif";
-          signatureDiv.style.position = "relative";
-          signatureDiv.style.minHeight = "120px";
+        const footerNoteDiv = document.createElement("div");
+        footerNoteDiv.style.cssText = `border:1px solid ${borderColor};border-top:none;padding:5px;text-align:center;font-size:9px;background-color:${maroon};color:white;`;
+        footerNoteDiv.textContent = `SUBJECT TO ${(formData.companyState || '').toUpperCase()} JURISDICTION | This is a Computer Generated Invoice`;
+        footerDiv.appendChild(footerNoteDiv);
 
-          signatureDiv.innerHTML = `
-            <div style="color:${themeColor}; position: absolute; top: 20px; right: 20px; font-family: 'Poppins', sans-serif;">
-              <strong style="font-size:11px; font-family: 'Poppins', sans-serif;">For ${formData.companyName}</strong>
-            </div>
-            <div style="font-size:9px; color:#666; position: absolute; bottom: 20px; right: 20px; text-align:right; font-family: 'Poppins', sans-serif;">
-              Authorized Signatory
-            </div>
-          `;
+        return footerDiv;
+      };
 
-          bottomSection.appendChild(signatureDiv);
+      // Build Gee Page Element
+      const buildGeePageElement = (page) => {
+        const navyBlue = "#1A2C4E";
+        const borderColor = "#000000";
+        const textColor = "#1F2937";
+        const lightBg = "#F9FAFB";
 
-          if (isFaizanCompany()) {
-            footerDiv.appendChild(bottomSection);
+        const pageDiv = document.createElement("div");
+        pageDiv.style.width = "210mm";
+        pageDiv.style.padding = "0";
+        pageDiv.style.margin = "0";
+        pageDiv.style.backgroundColor = "white";
+        pageDiv.style.boxSizing = "border-box";
+        pageDiv.style.fontFamily = "'Poppins', sans-serif";
+        pageDiv.style.border = `1px solid ${borderColor}`;
+
+        if (page === 0) {
+          const topBar = document.createElement("div");
+          topBar.style.cssText = `border-bottom:1px solid ${borderColor};padding:8px 12px;display:flex;justify-content:space-between;align-items:center;background:white;`;
+
+          const logoArea = document.createElement("div");
+          logoArea.style.cssText = "display:flex;align-items:center;gap:15px;";
+
+          if (companyLogo && !logoError) {
+            const logoPatch = document.createElement("div");
+            logoPatch.style.cssText = "display:flex;align-items:center;";
+            const logoImg = document.createElement("img");
+            logoImg.src = companyLogo;
+            logoImg.crossOrigin = "anonymous";
+            logoImg.style.cssText = "height:70px;width:auto;object-fit:contain;display:block;";
+            logoPatch.appendChild(logoImg);
+            logoArea.appendChild(logoPatch);
           } else {
-            footerDiv.appendChild(signatureDiv);
+            const logoBox = document.createElement("div");
+            logoBox.style.cssText = `width:50px;height:50px;background:${lightBg};border:1px solid ${borderColor};border-radius:6px;display:flex;align-items:center;justify-content:center;color:${navyBlue};font-size:22px;font-weight:700;`;
+            logoBox.textContent = formData.companyName?.charAt(0)?.toUpperCase() || "G";
+            logoArea.appendChild(logoBox);
           }
 
-          // Footer note
-          const footerNoteDiv = document.createElement("div");
-          footerNoteDiv.style.border = `1.5px solid ${themeColor}`;
-          footerNoteDiv.style.borderTop = "none";
-          footerNoteDiv.style.padding = "8px";
-          footerNoteDiv.style.textAlign = "center";
-          footerNoteDiv.style.fontSize = "9px";
-          footerNoteDiv.style.backgroundColor = themeColor;
-          footerNoteDiv.style.color = "white";
-          footerNoteDiv.style.borderRadius = "0 0 4px 4px";
-          footerNoteDiv.style.fontFamily = "'Poppins', sans-serif";
-          footerNoteDiv.style.marginTop = isFaizanCompany() ? "0" : "55px";
-          footerNoteDiv.innerHTML = `
-            SUBJECT TO ${formData.companyState.toUpperCase()} JURISDICTION | This is a Computer Generated Invoice
+          const invoiceBadge = document.createElement("div");
+          invoiceBadge.style.cssText = "text-align:right;";
+          invoiceBadge.innerHTML = `
+            <div style="color:${navyBlue};font-size:10px;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px;">Tax Invoice</div>
+            <div style="color:${navyBlue};font-size:16px;font-weight:700;">${formData.invoiceNumber}</div>
+            <div style="color:#6B7280;font-size:10px;">${new Date(formData.invoiceDate).toLocaleDateString("en-IN", {day:'2-digit',month:'long',year:'numeric'})}</div>
           `;
 
-          if (!isFaizanCompany()) {
-            footerDiv.appendChild(footerNoteDiv);
-          } else {
-            footerDiv.appendChild(footerNoteDiv);
-          }
+          topBar.appendChild(logoArea);
+          topBar.appendChild(invoiceBadge);
+          pageDiv.appendChild(topBar);
 
-          pageDiv.appendChild(footerDiv);
+          const fromToSection = document.createElement("div");
+          fromToSection.style.cssText = `display:flex;gap:0;border-bottom:1px solid ${borderColor};`;
+
+          const fromBox = document.createElement("div");
+          fromBox.style.cssText = `flex:1;padding:8px 12px;border-right:1px solid ${borderColor};background:${lightBg};`;
+          fromBox.innerHTML = `
+            <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:${navyBlue};font-weight:600;margin-bottom:6px;">From</div>
+            <div style="font-size:12px;color:${navyBlue};font-weight:700;margin-bottom:4px;">${formData.companyName}</div>
+            <div style="font-size:10px;color:${textColor};line-height:1.4;">
+              <div>${formData.companyAddress}</div>
+              <div><span style="font-weight:600;">GSTIN:</span> ${formData.companyGSTIN}</div>
+              <div><span style="font-weight:600;">Contact:</span> ${formData.companyContact}</div>
+              <div><span style="font-weight:600;">Email:</span> ${formData.companyemail}</div>
+            </div>
+            <div style="margin-top:4px;font-style:italic;font-size:9px;color:#6B7280;">${formData.companyDescription}</div>
+          `;
+
+          const toBox = document.createElement("div");
+          toBox.style.cssText = `flex:1;padding:8px 12px;background:white;`;
+          
+          toBox.innerHTML = `
+            <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:${navyBlue};font-weight:600;margin-bottom:6px;">Bill To</div>
+            <div style="font-size:12px;color:${navyBlue};font-weight:700;margin-bottom:4px;">${formData.clientName}</div>
+            <div style="font-size:10px;color:${textColor};line-height:1.4;">
+              <div>${formData.clientAddress}</div>
+              <div><span style="font-weight:600;">GSTIN:</span> ${formData.clientGSTIN}</div>
+              <div><span style="font-weight:600;">Contact:</span> ${formData.clientContact}</div>
+            </div>
+          `;
+
+          fromToSection.appendChild(fromBox);
+          fromToSection.appendChild(toBox);
+          pageDiv.appendChild(fromToSection);
+
+          if (validPodcEntries.length > 0) {
+            const podcSection = document.createElement("div");
+            podcSection.style.cssText = `padding:5px 12px;background:${lightBg};border-bottom:1px solid ${borderColor};display:flex;flex-wrap:wrap;gap:6px;align-items:center;`;
+            
+            const podcLabel = document.createElement("span");
+            podcLabel.style.cssText = `font-size:9px;letter-spacing:1px;text-transform:uppercase;color:${navyBlue};font-weight:600;margin-right:3px;white-space:nowrap;`;
+            podcLabel.textContent = "PO/DC:";
+            podcSection.appendChild(podcLabel);
+            
+            validPodcEntries.forEach((entry, index) => {
+              const pill = document.createElement("span");
+              pill.style.cssText = `display:inline-flex;gap:6px;align-items:center;background:white;padding:3px 8px;border-radius:4px;border:1px solid ${borderColor};font-size:9px;`;
+              pill.innerHTML = `<strong style="color:${navyBlue};">#${index + 1}:</strong> <span style="color:${textColor};">${entry.number || '—'}</span> <span style="color:${borderColor};">|</span> <strong style="color:${navyBlue};">Date:</strong> <span style="color:${textColor};">${entry.date ? new Date(entry.date).toLocaleDateString("en-IN") : '—'}</span>`;
+              podcSection.appendChild(pill);
+            });
+            pageDiv.appendChild(podcSection);
+          }
         }
 
-        // Render to canvas
-        const renderToCanvas = async (element) => {
-          const tempContainer = document.createElement("div");
-          tempContainer.style.position = "fixed";
-          tempContainer.style.left = "-10000px";
-          tempContainer.style.top = "0";
-          tempContainer.style.fontFamily = "'Poppins', sans-serif";
-          tempContainer.appendChild(element);
-          document.body.appendChild(tempContainer);
+        const tableWrapper = document.createElement("div");
+        tableWrapper.style.cssText = "padding:0 0;";
 
-          try {
-            const canvas = await html2canvas(element, {
-              scale: 2,
-              useCORS: true,
-              allowTaint: true,
-              backgroundColor: "#ffffff",
-              width: element.offsetWidth,
-              height: element.offsetHeight,
-              scrollX: 0,
-              scrollY: 0,
-              windowWidth: element.scrollWidth,
-              windowHeight: element.scrollHeight,
-            });
+        const table = document.createElement("table");
+        table.style.cssText = `width:100%;border-collapse:collapse;font-size:10px;font-family:'Poppins',sans-serif;table-layout:fixed;`;
 
-            return canvas;
-          } finally {
-            document.body.removeChild(tempContainer);
+        const thead = document.createElement("thead");
+        thead.innerHTML = `
+          <tr style="background-color:${navyBlue};">
+            <th style="padding:6px 4px;text-align:left;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:white;font-weight:600;width:4%;border-right:1px solid ${borderColor};">No.</th>
+            <th style="padding:6px 4px;text-align:left;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:white;font-weight:600;width:52%;border-right:1px solid ${borderColor};">Description</th>
+            <th style="padding:6px 4px;text-align:center;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:white;font-weight:600;width:10%;border-right:1px solid ${borderColor};">HSN/SAC</th>
+            <th style="padding:6px 4px;text-align:center;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:white;font-weight:600;width:8%;border-right:1px solid ${borderColor};">Qty</th>
+            <th style="padding:6px 4px;text-align:right;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:white;font-weight:600;width:13%;border-right:1px solid ${borderColor};">Rate (₹)</th>
+            <th style="padding:6px 4px;text-align:right;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:white;font-weight:600;width:13%;">Amount (₹)</th>
+           </tr>
+        `;
+        table.appendChild(thead);
+
+        const tbody = document.createElement("tbody");
+        const startIdx = getStartIdx(page);
+        const endIdx = getEndIdx(page);
+
+        for (let i = startIdx; i < endIdx; i++) {
+          const material = formData.materials[i];
+          const desc = material.description;
+          const truncDesc = desc.length > 80 ? desc.substring(0, 80) + '...' : desc;
+          const isEven = i % 2 === 0;
+          const row = document.createElement("tr");
+          row.style.cssText = `background-color:${isEven ? 'white' : lightBg};border-bottom:1px solid ${borderColor};height:30px;`;
+          row.innerHTML = `
+            <td style="padding:5px 4px;text-align:center;color:${textColor};font-size:10px;border-right:1px solid ${borderColor};">${i + 1}</td>
+            <td style="padding:5px 4px;color:${textColor};font-size:10px;border-right:1px solid ${borderColor};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${desc}">${truncDesc}</td>
+            <td style="padding:5px 4px;text-align:center;color:${textColor};font-size:10px;border-right:1px solid ${borderColor};">${material.hsn}</td>
+            <td style="padding:5px 4px;text-align:center;color:${textColor};font-size:10px;border-right:1px solid ${borderColor};">${material.quantity}</td>
+            <td style="padding:5px 4px;text-align:right;color:${textColor};font-size:10px;border-right:1px solid ${borderColor};">${formatNumber(material.rate)}</td>
+            <td style="padding:5px 4px;text-align:right;color:${navyBlue};font-size:10px;font-weight:600;">${formatNumber(material.amount)}</td>
+          `;
+          tbody.appendChild(row);
+        }
+
+        const currentRows = endIdx - startIdx;
+        const remainingRows = rowsPerPage - currentRows;
+
+        for (let i = 0; i < remainingRows; i++) {
+          const emptyRow = document.createElement("tr");
+          emptyRow.style.cssText = `height:30px;border-bottom:1px solid ${borderColor};background-color:${(endIdx + i) % 2 === 0 ? 'white' : lightBg};`;
+          emptyRow.innerHTML = `
+            <td style="padding:5px 4px;text-align:center;color:${textColor};font-size:10px;border-right:1px solid ${borderColor};">${endIdx + i + 1}</td>
+            <td style="border-right:1px solid ${borderColor};"></td>
+            <td style="border-right:1px solid ${borderColor};"></td>
+            <td style="border-right:1px solid ${borderColor};"></td>
+            <td style="border-right:1px solid ${borderColor};"></td>
+            <td style=""></td>
+          `;
+          tbody.appendChild(emptyRow);
+        }
+
+        if (page === pageCount - 1 && formData.additionalServices.length > 0) {
+          const svcHeaderRow = document.createElement("tr");
+          svcHeaderRow.style.cssText = `background-color:${lightBg};border-top:1px solid ${borderColor};border-bottom:1px solid ${borderColor};`;
+          svcHeaderRow.innerHTML = `
+            <td colspan="6" style="padding:5px 4px;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:${navyBlue};font-weight:600;">Additional Services (Excl. GST)</td>
+          `;
+          tbody.appendChild(svcHeaderRow);
+
+          formData.additionalServices.forEach((service, index) => {
+            const svcRow = document.createElement("tr");
+            svcRow.style.cssText = `background-color:${index % 2 === 0 ? 'white' : lightBg};border-bottom:1px solid ${borderColor};height:30px;`;
+            svcRow.innerHTML = `
+              <td style="padding:5px 4px;text-align:center;color:${textColor};font-size:10px;border-right:1px solid ${borderColor};">${index + 1}</td>
+              <td colspan="4" style="padding:5px 4px;color:${textColor};font-size:10px;border-right:1px solid ${borderColor};">${service.description}</td>
+              <td style="padding:5px 4px;text-align:right;color:${navyBlue};font-size:10px;font-weight:600;">${formatNumber(service.amount)}</td>
+            `;
+            tbody.appendChild(svcRow);
+          });
+        }
+
+        if (page === pageCount - 1) {
+          const subtotalRow = document.createElement("tr");
+          subtotalRow.style.cssText = `background-color:${lightBg};border-top:1px solid ${borderColor};border-bottom:1px solid ${borderColor};`;
+          subtotalRow.innerHTML = `
+            <td colspan="5" style="padding:6px 4px;text-align:right;font-size:10px;font-weight:600;color:${navyBlue};border-right:1px solid ${borderColor};">Sub Total</td>
+            <td style="padding:6px 4px;text-align:right;font-size:10px;font-weight:700;color:${navyBlue};">₹ ${formatNumber(totals.subTotal)}</td>
+          `;
+          tbody.appendChild(subtotalRow);
+
+          if (gstType === "GST") {
+            const cgstRow = document.createElement("tr");
+            cgstRow.style.cssText = `background-color:white;border-bottom:1px solid ${borderColor};`;
+            cgstRow.innerHTML = `
+              <td colspan="5" style="padding:5px 4px;text-align:right;font-size:10px;color:${textColor};border-right:1px solid ${borderColor};">CGST (${formData.cgstPercentage}%)</td>
+              <td style="padding:5px 4px;text-align:right;font-size:10px;color:${textColor};">₹ ${formatNumber(totals.cgstAmount)}</td>
+            `;
+            tbody.appendChild(cgstRow);
+
+            const sgstRow = document.createElement("tr");
+            sgstRow.style.cssText = `background-color:${lightBg};border-bottom:1px solid ${borderColor};`;
+            sgstRow.innerHTML = `
+              <td colspan="5" style="padding:5px 4px;text-align:right;font-size:10px;color:${textColor};border-right:1px solid ${borderColor};">SGST (${formData.sgstPercentage}%)</td>
+              <td style="padding:5px 4px;text-align:right;font-size:10px;color:${textColor};">₹ ${formatNumber(totals.sgstAmount)}</td>
+            `;
+            tbody.appendChild(sgstRow);
+          } else {
+            const igstRow = document.createElement("tr");
+            igstRow.style.cssText = `background-color:white;border-bottom:1px solid ${borderColor};`;
+            igstRow.innerHTML = `
+              <td colspan="5" style="padding:5px 4px;text-align:right;font-size:10px;color:${textColor};border-right:1px solid ${borderColor};">IGST (${igstPercentage}%)</td>
+              <td style="padding:5px 4px;text-align:right;font-size:10px;color:${textColor};">₹ ${formatNumber(totals.igstAmount)}</td>
+            `;
+            tbody.appendChild(igstRow);
           }
-        };
 
-        const addCanvasToPdf = (pdf, canvas) => {
-          const imgData = canvas.toDataURL("image/png");
-          const imgWidth = 186;
-          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+          const roundOffRow = document.createElement("tr");
+          roundOffRow.style.cssText = `background-color:${lightBg};border-bottom:1px solid ${borderColor};`;
+          roundOffRow.innerHTML = `
+            <td colspan="5" style="padding:5px 4px;text-align:right;font-size:10px;color:${textColor};border-right:1px solid ${borderColor};">Round Off</td>
+            <td style="padding:5px 4px;text-align:right;font-size:10px;color:${textColor};">${totals.roundOff > 0 ? '+' : ''}${formatNumberWithDecimal(totals.roundOff)}</td>
+            </tr>
+          `;
+          tbody.appendChild(roundOffRow);
 
-          const xPos = 12;
-          const yPos = 12;
-          pdf.addImage(imgData, "PNG", xPos, yPos, imgWidth, imgHeight);
-        };
+          const grandTotalRow = document.createElement("tr");
+          grandTotalRow.style.cssText = `background-color:${navyBlue};`;
+          grandTotalRow.innerHTML = `
+            <td colspan="5" style="padding:8px 4px;text-align:right;font-size:12px;font-weight:700;color:white;border-right:1px solid rgba(255,255,255,0.2);">Grand Total</td>
+            <td style="padding:8px 4px;text-align:right;font-size:12px;font-weight:700;color:white;">₹ ${formatNumber(totals.grandTotalWithRoundOff)}</td>
+          `;
+          tbody.appendChild(grandTotalRow);
+        }
 
+        table.appendChild(tbody);
+        tableWrapper.appendChild(table);
+        pageDiv.appendChild(tableWrapper);
+
+        if (page === pageCount - 1) {
+          const footer = document.createElement("div");
+          footer.style.cssText = `margin-top:0;border-top:1px solid ${borderColor};`;
+
+          const amtWords = document.createElement("div");
+          amtWords.style.cssText = `padding:6px 12px;background:${lightBg};border-bottom:1px solid ${borderColor};display:flex;justify-content:space-between;align-items:center;`;
+          amtWords.innerHTML = `
+            <div style="font-size:9px;color:${textColor};"><span style="font-weight:600;color:${navyBlue};">Amount in Words: </span>${numberToWords(totals.grandTotalWithRoundOff)}</div>
+            <div style="font-size:8px;color:${textColor};font-style:italic;">E. & O.E</div>
+          `;
+          footer.appendChild(amtWords);
+
+          const bottomRow = document.createElement("div");
+          bottomRow.style.cssText = "display:flex;";
+
+          const bankBox = document.createElement("div");
+          bankBox.style.cssText = `flex:1;padding:6px 12px;background:white;border-right:1px solid ${borderColor};`;
+          bankBox.innerHTML = `
+            <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:${navyBlue};font-weight:600;margin-bottom:5px;">Bank Details</div>
+            <div style="font-size:9px;color:${textColor};line-height:1.6;">
+              <div><span style="font-weight:600;color:${navyBlue};">Account Name:</span> ${currentBankDetailsForFooter.accountName}</div>
+              <div><span style="font-weight:600;color:${navyBlue};">Account No:</span> ${currentBankDetailsForFooter.accountNumber}</div>
+              <div><span style="font-weight:600;color:${navyBlue};">Bank:</span> ${currentBankDetailsForFooter.bank}</div>
+              <div><span style="font-weight:600;color:${navyBlue};">Branch:</span> ${currentBankDetailsForFooter.branch}</div>
+              <div><span style="font-weight:600;color:${navyBlue};">IFSC:</span> ${currentBankDetailsForFooter.ifscCode}</div>
+              <div><span style="font-weight:600;color:${navyBlue};">G-Pay:</span> ${currentBankDetailsForFooter.gpayNumber}</div>
+            </div>
+          `;
+
+          const sigBox = document.createElement("div");
+          sigBox.style.cssText = `flex:1;padding:6px 12px;background:${lightBg};display:flex;flex-direction:column;justify-content:space-between;min-height:90px;`;
+          sigBox.innerHTML = `
+            <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:${navyBlue};font-weight:600;">For ${formData.companyName}</div>
+            <div style="font-size:9px;color:${textColor};text-align:right;">Authorized Signatory</div>
+          `;
+
+          bottomRow.appendChild(bankBox);
+          bottomRow.appendChild(sigBox);
+          footer.appendChild(bottomRow);
+
+          const bottomBar = document.createElement("div");
+          bottomBar.style.cssText = `background-color:${navyBlue};padding:5px 12px;display:flex;justify-content:space-between;align-items:center;`;
+          bottomBar.innerHTML = `
+            <span style="color:rgba(255,255,255,0.9);font-size:8px;letter-spacing:1px;">SUBJECT TO ${(formData.companyState || '').toUpperCase()} JURISDICTION</span>
+            <span style="color:rgba(255,255,255,0.9);font-size:8px;letter-spacing:1px;">COMPUTER GENERATED INVOICE</span>
+          `;
+          footer.appendChild(bottomBar);
+          pageDiv.appendChild(footer);
+        }
+
+        return pageDiv;
+      };
+
+      for (let page = 0; page < pageCount; page++) {
+        if (page > 0) pdf.addPage();
+
+        const pageDiv = isFaizan ? buildFaizanPageElement(page) : buildGeePageElement(page);
         const canvas = await renderToCanvas(pageDiv);
-        addCanvasToPdf(pdf, canvas, page);
+        addCanvasToPdf(pdf, canvas);
       }
 
-      // Clean up
       document.body.removeChild(container);
 
-      // Save the PDF with company-specific filename
       const companyPrefix = getCompanyPrefix();
       const fileName = `${companyPrefix}_Invoice_${formData.invoiceNumber}_${new Date().toISOString().split("T")[0]}.pdf`;
       pdf.save(fileName);
 
       showNotification("PDF generated and data saved to Firebase successfully!", "success");
-
-      // Reset form after successful generation
       await resetForm();
 
     } catch (error) {
@@ -1291,8 +1991,7 @@ const InvoiceGenerator = () => {
 
   const totals = calculateTotals();
 
-  // Step navigation component
-  const StepNavigation = () => (
+  const renderStepNavigation = () => (
     <div style={styles.stepNavigation}>
       <div style={styles.stepContainer}>
         {[1, 2, 3, 4].map((step) => (
@@ -1320,8 +2019,7 @@ const InvoiceGenerator = () => {
     </div>
   );
 
-  // Step 1: Company Details (Read-only from Firebase)
-  const Step1 = () => (
+  const renderStep1 = () => (
     <div style={styles.stepContent}>
       <h2 style={styles.stepTitle}>Company Details</h2>
       <div style={styles.noteBox}>
@@ -1366,8 +2064,7 @@ const InvoiceGenerator = () => {
     </div>
   );
 
-  // Step 2: Client Details
-  const Step2 = () => (
+  const renderStep2 = () => (
     <div style={styles.stepContent}>
       <h2 style={styles.stepTitle}>Client Details</h2>
       <div style={styles.formGrid}>
@@ -1397,7 +2094,6 @@ const InvoiceGenerator = () => {
                 }}
               />
             )}
-            key={`autocomplete-${formData.clientName}`} // Add key to force re-render when needed
           />
         </div>
 
@@ -1405,7 +2101,7 @@ const InvoiceGenerator = () => {
           <label style={styles.label}>Client Address</label>
           <textarea
             name="clientAddress"
-            value={formData.clientAddress}
+            value={formData.clientAddress || ""}
             onChange={handleInputChange}
             rows="2"
             style={styles.textarea}
@@ -1418,7 +2114,7 @@ const InvoiceGenerator = () => {
           <input
             type="text"
             name="clientGSTIN"
-            value={formData.clientGSTIN}
+            value={formData.clientGSTIN || ""}
             onChange={handleInputChange}
             style={styles.input}
             placeholder="Enter client GSTIN"
@@ -1430,7 +2126,7 @@ const InvoiceGenerator = () => {
           <input
             type="text"
             name="clientContact"
-            value={formData.clientContact}
+            value={formData.clientContact || ""}
             onChange={handleInputChange}
             style={styles.input}
             placeholder="Enter client contact number"
@@ -1440,8 +2136,7 @@ const InvoiceGenerator = () => {
     </div>
   );
 
-  // Step 3: Invoice Details
-  const Step3 = () => (
+  const renderStep3 = () => (
     <div style={styles.stepContent}>
       <h2 style={styles.stepTitle}>Invoice Details</h2>
       <div style={styles.formGrid}>
@@ -1451,15 +2146,14 @@ const InvoiceGenerator = () => {
             <input
               type="text"
               name="invoiceNumber"
-              value={formData.invoiceNumber}
+              value={formData.invoiceNumber || ""}
               onChange={handleInputChange}
               style={{ ...styles.input, flex: 1 }}
               readOnly
               title="Auto-generated invoice number"
             />
-           
           </div>
-          <small style={styles.helpText}>Auto-generated</small>
+          <small style={styles.helpText}>Auto-generated based on last invoice</small>
         </div>
 
         <div style={styles.formGroup}>
@@ -1467,7 +2161,7 @@ const InvoiceGenerator = () => {
           <input
             type="date"
             name="invoiceDate"
-            value={formData.invoiceDate}
+            value={formData.invoiceDate || ""}
             onChange={handleInputChange}
             style={styles.input}
             required
@@ -1475,119 +2169,156 @@ const InvoiceGenerator = () => {
         </div>
 
         <div style={styles.formGroup}>
-          <label style={styles.label}>PO Number</label>
-          <input
-            type="text"
-            name="poNumber"
-            value={formData.poNumber}
-            onChange={handleInputChange}
-            style={styles.input}
-            placeholder="Enter PO number"
-          />
-        </div>
-
-        <div style={styles.formGroup}>
-          <label style={styles.label}>PO Date</label>
-          <input
-            type="date"
-            name="poDate"
-            value={formData.poDate}
-            onChange={handleInputChange}
-            style={styles.input}
-          />
-        </div>
-
-        <div style={styles.formGroup}>
-          <label style={styles.label}>DC No</label>
-          <input
-            type="text"
-            name="DCNO"
-            value={formData.DCNO}
-            onChange={handleInputChange}
-            style={styles.input}
-            placeholder="Enter DC number"
-          />
-        </div>
-
-        <div style={styles.formGroup}>
-          <label style={styles.label}>DC Date</label>
-          <input
-            type="date"
-            name="DCDate"
-            value={formData.DCDate}
-            onChange={handleInputChange}
-            style={styles.input}
-          />
-        </div>
-
-        <div style={styles.formGroup}>
-          <label style={styles.label}>CGST Percentage (%)</label>
+          <label style={styles.label}>GST Type</label>
           <select
-            name="cgstPercentage"
-            value={formData.cgstPercentage}
-            onChange={(e) => {
-              const val = parseFloat(e.target.value);
-              setFormData(prev => ({ ...prev, cgstPercentage: val }));
-            }}
+            value={gstType || "GST"}
+            onChange={(e) => setGstType(e.target.value)}
             style={styles.input}
           >
-            <option value={0}>0%</option>
-            <option value={2.5}>2.5%</option>
-            <option value={5}>5%</option>
-            <option value={6}>6%</option>
-            <option value={9}>9%</option>
-            <option value={12}>12%</option>
-            <option value={14}>14%</option>
-            <option value={18}>18%</option>
-            <option value={28}>28%</option>
+            <option value="GST">GST (CGST + SGST)</option>
+            <option value="IGST">IGST</option>
           </select>
         </div>
 
-        <div style={styles.formGroup}>
-          <label style={styles.label}>SGST Percentage (%)</label>
-          <select
-            name="sgstPercentage"
-            value={formData.sgstPercentage}
-            onChange={(e) => {
-              const val = parseFloat(e.target.value);
-              setFormData(prev => ({ ...prev, sgstPercentage: val }));
-            }}
-            style={styles.input}
-          >
-            <option value={0}>0%</option>
-            <option value={2.5}>2.5%</option>
-            <option value={5}>5%</option>
-            <option value={6}>6%</option>
-            <option value={9}>9%</option>
-            <option value={12}>12%</option>
-            <option value={14}>14%</option>
-            <option value={18}>18%</option>
-            <option value={28}>28%</option>
-          </select>
-        </div>
+        {gstType === "GST" ? (
+          <>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>CGST Percentage (%)</label>
+              <select
+                name="cgstPercentage"
+                value={formData.cgstPercentage || 9}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  setFormData(prev => ({ ...prev, cgstPercentage: val }));
+                }}
+                style={styles.input}
+              >
+                <option value={0}>0%</option>
+                <option value={2.5}>2.5%</option>
+                <option value={5}>5%</option>
+                <option value={6}>6%</option>
+                <option value={9}>9%</option>
+                <option value={12}>12%</option>
+                <option value={14}>14%</option>
+                <option value={18}>18%</option>
+                <option value={28}>28%</option>
+              </select>
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>SGST Percentage (%)</label>
+              <select
+                name="sgstPercentage"
+                value={formData.sgstPercentage || 9}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  setFormData(prev => ({ ...prev, sgstPercentage: val }));
+                }}
+                style={styles.input}
+              >
+                <option value={0}>0%</option>
+                <option value={2.5}>2.5%</option>
+                <option value={5}>5%</option>
+                <option value={6}>6%</option>
+                <option value={9}>9%</option>
+                <option value={12}>12%</option>
+                <option value={14}>14%</option>
+                <option value={18}>18%</option>
+                <option value={28}>28%</option>
+              </select>
+            </div>
+          </>
+        ) : (
+          <div style={styles.formGroup}>
+            <label style={styles.label}>IGST Percentage (%)</label>
+            <select
+              value={igstPercentage || 18}
+              onChange={(e) => setIgstPercentage(parseFloat(e.target.value))}
+              style={styles.input}
+            >
+              <option value={0}>0%</option>
+              <option value={2.5}>2.5%</option>
+              <option value={5}>5%</option>
+              <option value={6}>6%</option>
+              <option value={9}>9%</option>
+              <option value={12}>12%</option>
+              <option value={14}>14%</option>
+              <option value={18}>18%</option>
+              <option value={28}>28%</option>
+            </select>
+          </div>
+        )}
       </div>
 
-      {/* Show Bank Details button for Faizan company */}
-      {isFaizanCompany() && (
-        <div style={{ marginTop: "20px", textAlign: "center" }}>
-          <button
-            onClick={openBankDialog}
-            style={{
-              ...styles.navButton,
-              backgroundColor: "#4CAF50",
-              width: "auto",
-              padding: "10px 30px"
-            }}
-          >
-            Configure Bank Details
-          </button>
-        </div>
-      )}
+      {/* PO/DC Entries Section */}
+      <div style={styles.sectionBox}>
+        <h3 style={styles.subSectionTitle}>PO / DC Details</h3>
+        {podcEntries.map((entry, index) => (
+          <div key={entry.id} style={{ display: 'flex', gap: '20px', marginBottom: '15px', alignItems: 'center' }}>
+            <div style={{ flex: 1 }}>
+              <label style={styles.label}>PO/DC Number {index + 1}</label>
+              <input
+                type="text"
+                value={entry.number || ""}
+                onChange={(e) => handlePodcChange(entry.id, 'number', e.target.value)}
+                style={styles.input}
+                placeholder={`Enter PO/DC number ${index + 1}`}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={styles.label}>PO/DC Date {index + 1}</label>
+              <input
+                type="date"
+                value={entry.date || ""}
+                onChange={(e) => handlePodcChange(entry.id, 'date', e.target.value)}
+                style={styles.input}
+              />
+            </div>
+            {podcEntries.length > 1 && (
+              <button
+                onClick={() => removePodcEntry(entry.id)}
+                style={{
+                  ...styles.removeButton,
+                  marginTop: '25px',
+                  padding: '8px 15px'
+                }}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          onClick={addPodcEntry}
+          style={{
+            ...styles.addButton,
+            width: 'auto',
+            padding: '10px 25px',
+            marginTop: '10px'
+          }}
+        >
+          + Add Another PO/DC
+        </button>
+      </div>
+
+      {/* Configure Bank Details Button */}
+      <div style={{ marginTop: "20px", textAlign: "center" }}>
+        <button
+          onClick={openBankDialog}
+          style={{
+            ...styles.navButton,
+            backgroundColor: "#4CAF50",
+            width: "auto",
+            padding: "10px 30px"
+          }}
+        >
+          Configure Bank Details
+        </button>
+      </div>
     </div>
   );
 
-  // Step 4: Materials and Additional Services
-  const Step4 = () => (
+  const renderStep4 = () => (
     <div style={styles.stepContent}>
       <h2 style={styles.stepTitle}>Materials & Services</h2>
 
@@ -1601,6 +2332,7 @@ const InvoiceGenerator = () => {
               onChange={handleMaterialSelect}
               style={styles.input}
               disabled={loading}
+              value=""
             >
               <option value="">Select a material</option>
               {firebaseMaterials.map((material) => (
@@ -1610,63 +2342,59 @@ const InvoiceGenerator = () => {
               ))}
             </select>
           </div>
-
+  
           <div style={styles.formGroup}>
             <label style={styles.label}>Description *</label>
             <input
               type="text"
               name="description"
-              value={newMaterial.description}
+              value={newMaterial.description || ""}
               onChange={handleMaterialChange}
               placeholder="Material description"
               style={styles.input}
               autoComplete="off"
             />
           </div>
-
+  
           <div style={styles.formGroup}>
             <label style={styles.label}>HSN/SAC</label>
             <input
               type="text"
               name="hsn"
-              value={newMaterial.hsn}
+              value={newMaterial.hsn || ""}
               onChange={handleMaterialChange}
               placeholder="HSN code"
               style={styles.input}
               autoComplete="off"
             />
           </div>
-
+  
           <div style={styles.formGroup}>
             <label style={styles.label}>Quantity *</label>
             <input
-              type="number"
+              type="text"
               name="quantity"
-              value={newMaterial.quantity}
+              value={newMaterial.quantity || ""}
               onChange={handleMaterialChange}
               placeholder="Quantity"
-              min="0"
-              step="0.01"
               style={styles.input}
               autoComplete="off"
             />
           </div>
-
+  
           <div style={styles.formGroup}>
             <label style={styles.label}>Rate *</label>
             <input
-              type="number"
+              type="text"
               name="rate"
-              value={newMaterial.rate}
+              value={newMaterial.rate || ""}
               onChange={handleMaterialChange}
               placeholder="Rate per unit"
-              min="0"
-              step="0.01"
               style={styles.input}
               autoComplete="off"
             />
           </div>
-
+  
           <button className="add-btn" onClick={addMaterial} style={styles.addButton}>
             Add Material
           </button>
@@ -1682,7 +2410,7 @@ const InvoiceGenerator = () => {
             <input
               type="text"
               name="description"
-              value={newAdditionalService.description}
+              value={newAdditionalService.description || ""}
               onChange={handleAdditionalServiceChange}
               placeholder="Service description"
               style={styles.input}
@@ -1693,13 +2421,11 @@ const InvoiceGenerator = () => {
           <div style={styles.formGroup}>
             <label style={styles.label}>Amount *</label>
             <input
-              type="number"
+              type="text"
               name="amount"
-              value={newAdditionalService.amount}
+              value={newAdditionalService.amount || ""}
               onChange={handleAdditionalServiceChange}
               placeholder="Amount"
-              min="0"
-              step="0.01"
               style={styles.input}
               autoComplete="off"
             />
@@ -1726,7 +2452,7 @@ const InvoiceGenerator = () => {
                   <th style={styles.tableHeader}>Rate</th>
                   <th style={styles.tableHeader}>Amount</th>
                   <th style={styles.tableHeader}>Action</th>
-                </tr>
+                 </tr>
               </thead>
               <tbody>
                 {formData.materials.map((material, index) => (
@@ -1765,7 +2491,7 @@ const InvoiceGenerator = () => {
                   <th style={styles.tableHeader}>Description</th>
                   <th style={styles.tableHeader}>Amount</th>
                   <th style={styles.tableHeader}>Action</th>
-                </tr>
+                 </tr>
               </thead>
               <tbody>
                 {formData.additionalServices.map((service, index) => (
@@ -1806,14 +2532,23 @@ const InvoiceGenerator = () => {
             <span style={styles.totalLabel}>Sub Total:</span>
             <span style={styles.totalValue}>₹ {formatNumber(totals.subTotal)}</span>
           </div>
-          <div style={styles.totalRow}>
-            <span style={styles.totalLabel}>CGST ({formData.cgstPercentage}%):</span>
-            <span style={styles.totalValue}>₹ {formatNumber(totals.cgstAmount)}</span>
-          </div>
-          <div style={styles.totalRow}>
-            <span style={styles.totalLabel}>SGST ({formData.sgstPercentage}%):</span>
-            <span style={styles.totalValue}>₹ {formatNumber(totals.sgstAmount)}</span>
-          </div>
+          {gstType === "GST" ? (
+            <>
+              <div style={styles.totalRow}>
+                <span style={styles.totalLabel}>CGST ({formData.cgstPercentage}%):</span>
+                <span style={styles.totalValue}>₹ {formatNumber(totals.cgstAmount)}</span>
+              </div>
+              <div style={styles.totalRow}>
+                <span style={styles.totalLabel}>SGST ({formData.sgstPercentage}%):</span>
+                <span style={styles.totalValue}>₹ {formatNumber(totals.sgstAmount)}</span>
+              </div>
+            </>
+          ) : (
+            <div style={styles.totalRow}>
+              <span style={styles.totalLabel}>IGST ({igstPercentage}%):</span>
+              <span style={styles.totalValue}>₹ {formatNumber(totals.igstAmount)}</span>
+            </div>
+          )}
           <div style={styles.totalRow}>
             <span style={styles.totalLabel}>Round Off:</span>
             <span style={styles.totalValue}>₹ {totals.roundOff > 0 ? '+' : ''}{formatNumberWithDecimal(totals.roundOff)}</span>
@@ -1829,16 +2564,34 @@ const InvoiceGenerator = () => {
         </div>
       )}
 
-      {/* Generate Button */}
+      {/* Generate and Preview Buttons */}
       <div style={styles.generateSection}>
-        <button
-          className="generate-btn"
-          onClick={generatePDF}
-          style={styles.generateButton}
-          disabled={formData.materials.length === 0}
-        >
-          Generate Invoice PDF
-        </button>
+        <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button
+            className="preview-btn"
+            onClick={handlePreview}
+            style={{
+              ...styles.generateButton,
+              backgroundColor: "#4CAF50",
+              maxWidth: "300px"
+            }}
+            disabled={formData.materials.length === 0}
+          >
+            Preview Invoice
+          </button>
+          <button
+            className="generate-btn"
+            onClick={generatePDF}
+            style={{
+              ...styles.generateButton,
+              backgroundColor: "#001F3F",
+              maxWidth: "300px"
+            }}
+            disabled={formData.materials.length === 0}
+          >
+            Generate Invoice PDF
+          </button>
+        </div>
         {formData.materials.length === 0 && (
           <p style={styles.errorText}>Please add at least one material to generate invoice</p>
         )}
@@ -1878,10 +2631,10 @@ const InvoiceGenerator = () => {
 
       <h1 className="title" style={styles.title}>Invoice Generator</h1>
 
-      {/* Bank Details Dialog for Faizan Company */}
+      {/* Bank Details Dialog */}
       <Dialog open={bankDialogOpen} onClose={() => setBankDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ backgroundColor: "#4CAF50", color: "white", py: 2 }}>
-          Configure Bank Details
+          Configure Bank Details - {isFaizanCompany() ? "Faizan Enterprises" : "GEE Enterprises"}
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 3 }}>
           <div style={{ display: "grid", gap: "20px", padding: "10px 0" }}>
@@ -1890,7 +2643,7 @@ const InvoiceGenerator = () => {
               <input
                 type="text"
                 name="accountName"
-                value={bankDetails.accountName}
+                value={getCurrentBankDetails().accountName || ""}
                 onChange={handleBankDetailChange}
                 style={styles.input}
                 placeholder="Enter account name"
@@ -1901,7 +2654,7 @@ const InvoiceGenerator = () => {
               <input
                 type="text"
                 name="accountNumber"
-                value={bankDetails.accountNumber}
+                value={getCurrentBankDetails().accountNumber || ""}
                 onChange={handleBankDetailChange}
                 style={styles.input}
                 placeholder="Enter account number"
@@ -1912,7 +2665,7 @@ const InvoiceGenerator = () => {
               <input
                 type="text"
                 name="bank"
-                value={bankDetails.bank}
+                value={getCurrentBankDetails().bank || ""}
                 onChange={handleBankDetailChange}
                 style={styles.input}
                 placeholder="Enter bank name"
@@ -1923,7 +2676,7 @@ const InvoiceGenerator = () => {
               <input
                 type="text"
                 name="branch"
-                value={bankDetails.branch}
+                value={getCurrentBankDetails().branch || ""}
                 onChange={handleBankDetailChange}
                 style={styles.input}
                 placeholder="Enter branch"
@@ -1934,7 +2687,7 @@ const InvoiceGenerator = () => {
               <input
                 type="text"
                 name="ifscCode"
-                value={bankDetails.ifscCode}
+                value={getCurrentBankDetails().ifscCode || ""}
                 onChange={handleBankDetailChange}
                 style={styles.input}
                 placeholder="Enter IFSC code"
@@ -1945,7 +2698,7 @@ const InvoiceGenerator = () => {
               <input
                 type="text"
                 name="gpayNumber"
-                value={bankDetails.gpayNumber}
+                value={getCurrentBankDetails().gpayNumber || ""}
                 onChange={handleBankDetailChange}
                 style={styles.input}
                 placeholder="Enter G-Pay number"
@@ -1963,8 +2716,26 @@ const InvoiceGenerator = () => {
         </DialogActions>
       </Dialog>
 
+      {/* Preview Dialog */}
+      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ backgroundColor: "#001F3F", color: "white", py: 2 }}>
+          Invoice Preview
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0, backgroundColor: "#e5e7eb", overflow: "auto" }}>
+          <div
+            dangerouslySetInnerHTML={{ __html: previewHtml }}
+            style={{ padding: "20px", display: "flex", justifyContent: "center" }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2, backgroundColor: '#f9f9f9' }}>
+          <Button onClick={() => setPreviewOpen(false)} color="inherit">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Step Navigation */}
-      <StepNavigation />
+      {renderStepNavigation()}
 
       <div className="container" style={styles.contentContainer}>
         {/* Navigation Buttons */}
@@ -1987,10 +2758,10 @@ const InvoiceGenerator = () => {
         </div>
 
         {/* Step Content */}
-        {currentStep === 1 && <Step1 />}
-        {currentStep === 2 && <Step2 />}
-        {currentStep === 3 && <Step3 />}
-        {currentStep === 4 && <Step4 />}
+        {currentStep === 1 && renderStep1()}
+        {currentStep === 2 && renderStep2()}
+        {currentStep === 3 && renderStep3()}
+        {currentStep === 4 && renderStep4()}
       </div>
 
       <style>
@@ -2045,7 +2816,6 @@ const styles = {
     borderRadius: "10px",
     padding: "30px",
   },
-  // Step Navigation Styles
   stepNavigation: {
     marginBottom: "40px",
   },
@@ -2085,7 +2855,6 @@ const styles = {
     backgroundColor: "#CCCCCC",
     zIndex: 0,
   },
-  // Step Content Styles
   stepContent: {
     minHeight: "500px",
   },
@@ -2096,7 +2865,6 @@ const styles = {
     fontWeight: "600",
     textAlign: "center",
   },
-  // Navigation Buttons
   navigationButtons: {
     display: "flex",
     justifyContent: "space-between",
@@ -2114,7 +2882,6 @@ const styles = {
     transition: "all 0.3s ease",
     minWidth: "120px",
   },
-  // Company Details Display
   noteBox: {
     backgroundColor: "#E8F4F8",
     padding: "15px",
@@ -2157,7 +2924,6 @@ const styles = {
     flex: 1,
     color: "#333",
   },
-  // Form Styles
   formGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
@@ -2204,7 +2970,6 @@ const styles = {
     marginTop: "5px",
     display: "block",
   },
-  // Material and Service Forms
   sectionBox: {
     backgroundColor: "#F8FAFF",
     padding: "25px",
@@ -2240,7 +3005,6 @@ const styles = {
     justifySelf: "center",
     width: "200px",
   },
-  // Table Styles
   materialsList: {
     marginBottom: "20px",
     overflowX: "auto",
@@ -2287,7 +3051,6 @@ const styles = {
     transition: "all 0.3s ease",
     fontWeight: "500",
   },
-  // Totals Section
   totalsSection: {
     backgroundColor: "#F8FAFF",
     padding: "25px",
@@ -2303,12 +3066,12 @@ const styles = {
     borderBottom: "1px solid #E0E0E0",
   },
   totalLabel: {
-    fontSize: "1.1rem",
+    fontSize: "1.2rem",
     color: "#001F3F",
     fontWeight: "500",
   },
   totalValue: {
-    fontSize: "1.1rem",
+    fontSize: "1.2rem",
     color: "#001F3F",
     fontWeight: "600",
   },
@@ -2316,28 +3079,27 @@ const styles = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: "18px 0",
+    padding: "20px 0",
     borderBottom: "none",
     marginTop: "15px",
   },
   grandTotalLabel: {
-    fontSize: "1.3rem",
+    fontSize: "1.4rem",
     color: "#001F3F",
     fontWeight: "700",
   },
   grandTotalValue: {
-    fontSize: "1.3rem",
+    fontSize: "1.4rem",
     color: "#001F3F",
     fontWeight: "700",
   },
   amountWords: {
-    fontSize: "1rem",
+    fontSize: "1.1rem",
     color: "#001F3F",
     fontStyle: "italic",
     maxWidth: "60%",
     textAlign: "right",
   },
-  // Generate Section
   generateSection: {
     textAlign: "center",
     padding: "30px",
@@ -2346,12 +3108,11 @@ const styles = {
     border: "2px solid #001F3F",
   },
   generateButton: {
-    backgroundColor: "#001F3F",
     color: "#FFFFFF",
     border: "none",
-    padding: "18px 40px",
+    padding: "12px 20px",
     borderRadius: "8px",
-    fontSize: "1.3rem",
+    fontSize: "1.2rem",
     fontWeight: "700",
     cursor: "pointer",
     transition: "all 0.3s ease",
@@ -2364,52 +3125,6 @@ const styles = {
     fontSize: "1rem",
     marginTop: "10px",
   },
-};
-
-// Add hover effects
-styles.input[':hover'] = {
-  outline: "none",
-  borderColor: "#0056b3",
-  boxShadow: "0 0 0 3px rgba(0, 31, 63, 0.1)",
-};
-
-styles.input[':focus'] = {
-  outline: "none",
-  borderColor: "#0056b3",
-  boxShadow: "0 0 0 3px rgba(0, 31, 63, 0.1)",
-};
-
-styles.textarea[':hover'] = styles.input[':hover'];
-styles.textarea[':focus'] = styles.input[':focus'];
-
-styles.addButton[':hover'] = {
-  backgroundColor: "#003366",
-  transform: "translateY(-2px)",
-  boxShadow: "0 4px 12px rgba(0, 31, 63, 0.2)",
-};
-
-styles.removeButton[':hover'] = {
-  backgroundColor: "#FF5252",
-  transform: "translateY(-1px)",
-};
-
-styles.generateButton[':hover'] = {
-  backgroundColor: "#003366",
-  transform: "translateY(-3px)",
-  boxShadow: "0 6px 20px rgba(0, 31, 63, 0.25)",
-};
-
-styles.navButton[':hover'] = {
-  backgroundColor: "#003366",
-  transform: "translateY(-2px)",
-  boxShadow: "0 4px 12px rgba(0, 31, 63, 0.2)",
-};
-
-styles.navButton[':disabled'] = {
-  backgroundColor: "#CCCCCC",
-  cursor: "not-allowed",
-  transform: "none",
-  boxShadow: "none",
 };
 
 export default InvoiceGenerator;

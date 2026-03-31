@@ -14,7 +14,7 @@ export const COMPANIES = [
   },
   {
     id: 'faizan',
-    name: 'Faizan Company',
+    name: 'FAIZAN ENTERPRISES',
     logo: null
   }
 ];

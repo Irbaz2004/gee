@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   AppBar,
   Toolbar,
@@ -11,13 +11,22 @@ import {
   MenuItem,
   ListItemIcon,
   Tooltip,
+  Divider,
+  Chip,
 } from '@mui/material';
 import {
   Logout as LogoutIcon,
   Person as PersonIcon,
+  Business as BusinessIcon,
+  Dashboard as DashboardIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../Auth/authcontext';
 import { useCompany } from '../context/CompanyContext';
+
+// Poppins font configuration
+const poppinsFont = {
+  fontFamily: 'Poppins, sans-serif',
+};
 
 const Header = () => {
   const { currentUser, logout } = useAuth();
@@ -25,6 +34,7 @@ const Header = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [currentPage, setCurrentPage] = useState('');
   const location = useLocation();
+  const navigate = useNavigate();
 
   const handleMenuOpen = (event) => {
     setAnchorEl(event.currentTarget);
@@ -35,18 +45,24 @@ const Header = () => {
   };
 
   const handleLogout = async () => {
-    await logout();
-    handleMenuClose();
+    try {
+      await logout();
+      handleMenuClose();
+      navigate('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   const handleSwitchCompany = () => {
     clearCompany();
     handleMenuClose();
-    // Navigation to /select-company will happen automatically via RequireCompany or App.jsx logic if we trigger a state change, 
-    // but explicit navigation is safer if clearCompany() doesn't auto-redirect immediately.
-    // However, since clearCompany sets selectedCompany to null, RequireCompany (if wrapping current route) will trigger.
-    // But Header is outside RequireCompany? No, DashboardLayout is wrapped.
-    // Actually, DashboardLayout is inside RequireCompany. So setting it to null will trigger Navigate to /select-company.
+    navigate('/select-company');
+  };
+
+  const handleGoToDashboard = () => {
+    handleMenuClose();
+    navigate('/');
   };
 
   // Get current time, date and greeting
@@ -57,7 +73,7 @@ const Header = () => {
     hour12: true
   });
   const day = now.toLocaleDateString('en-US', {
-    weekday: 'long'
+    weekday: 'short'
   });
   const date = now.toLocaleDateString('en-US', {
     month: 'short',
@@ -74,41 +90,58 @@ const Header = () => {
 
   const greeting = getGreeting();
 
+  // Function to split company name into two parts
+  const splitCompanyName = (fullName) => {
+    if (!fullName) return { firstLine: 'Select', secondLine: 'Company' };
+    
+    const words = fullName.trim().split(' ');
+    
+    if (words.length === 1) {
+      return { firstLine: words[0], secondLine: '' };
+    }
+    
+    if (words.length === 2) {
+      return { firstLine: words[0], secondLine: words[1] };
+    }
+    
+    // For names with 3 or more words, take first word as first line, rest as second line
+    const firstLine = words[0];
+    const secondLine = words.slice(1).join(' ');
+    
+    return { firstLine, secondLine };
+  };
+
+  const companyNameParts = splitCompanyName(selectedCompany?.name);
+
   // Function to format page name from URL path
   const formatPageName = (pathname) => {
     if (pathname === '/') return 'Dashboard';
 
-    // Remove leading slash and split by slashes
     const path = pathname.substring(1);
     if (!path) return 'Dashboard';
 
-    // Split by slashes and take the first part
     const segments = path.split('/');
     const mainSegment = segments[0];
 
-    // Format the page name
     const formattedName = mainSegment
       .split('-')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
 
-    // Handle common page names
     const pageNames = {
       'dashboard': 'Dashboard',
-      'inventory': 'Inventory Management',
-      'products': 'Product Catalog',
-      'orders': 'Order Management',
-      'customers': 'Customer Management',
-      'reports': 'Reports & Analytics',
+      'inventory': 'Inventory',
+      'materials': 'Materials',
+      'clients': 'Clients',
+      'invoice': 'Invoice Generator',
+      'invoices': 'Invoices',
+      'admin': 'Admin Settings',
+      'reports': 'Reports',
+      'profile': 'Profile',
       'settings': 'Settings',
-      'profile': 'User Profile',
-      'login': 'Login',
-      'register': 'Register',
-      'forgot-password': 'Forgot Password',
-      'reset-password': 'Reset Password',
     };
 
-    return pageNames[mainSegment.toLowerCase()] || formattedName || 'Page';
+    return pageNames[mainSegment.toLowerCase()] || formattedName;
   };
 
   // Update current page when location changes
@@ -123,73 +156,103 @@ const Header = () => {
         zIndex: (theme) => theme.zIndex.drawer + 1,
         backgroundColor: 'white',
         color: '#001F3F',
-        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+        boxShadow: '0 2px 8px rgba(0, 31, 63, 0.08)',
         borderBottom: '1px solid rgba(0, 31, 63, 0.1)',
-        display: 'flex',
+        ...poppinsFont,
       }}
     >
       <Toolbar sx={{
         minHeight: { xs: 64, sm: 72 },
+        display: 'flex',
         justifyContent: 'space-between',
+        px: { xs: 2, sm: 3 }
       }}>
-        {/* Left Section: Brand Name + Current Page */}
+        {/* Left Section: Brand + Page */}
         <Box sx={{
           display: 'flex',
           alignItems: 'center',
-          flexGrow: 1,
-          gap: 3
+          gap: 2,
+          flex: 1,
+          minWidth: 0 // Prevents flex overflow
         }}>
-          {/* Brand Name with Border */}
-          <Box sx={{
-            textAlign: 'left',
-            borderRight: '4px solid #001F3F',
-            pr: 3,
-            minWidth: 220
-          }}>
-            <Typography
-              variant="h5"
-              component="div"
-              fontWeight={700}
-              color="#001F3F"
-              lineHeight={1.1}
-              fontSize={16}
-            >
-              {selectedCompany ? selectedCompany.name : 'Galaxy'}
-            </Typography>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              fontSize={12}
-              fontWeight={500}
-            >
-              {selectedCompany ? 'Workspace' : 'Electricals & Electronics'}
-            </Typography>
-          </Box>
-
-          {/* Current Page Name */}
+          {/* Brand */}
           <Box sx={{
             display: 'flex',
             alignItems: 'center',
-            minHeight: 60
+            gap: 1.5,
+            pr: 10,
+            borderRight: '2px solid rgba(0, 31, 63, 0.1)',
           }}>
+            <BusinessIcon sx={{ color: '#001F3F', fontSize: 28 }} />
+            <Box sx={{ minWidth: 120 }}>
+              <Typography
+                variant="h6"
+                component="div"
+                color="#001F3F"
+                sx={{
+                  fontSize: { xs: '1rem', sm: '1.1rem' },
+                  lineHeight: 1.2,
+                  fontFamily: 'Poppins, sans-serif',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {companyNameParts.firstLine}
+              </Typography>
+              {companyNameParts.secondLine && (
+                <Typography
+                  variant="caption"
+                  component="div"
+                  color="#64748b"
+                  sx={{
+                    fontSize: { xs: '0.65rem', sm: '0.7rem' },
+                    lineHeight: 1.2,
+                    fontFamily: 'Poppins, sans-serif',
+                    fontWeight: 500,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {companyNameParts.secondLine}
+                </Typography>
+              )}
+              {selectedCompany && (
+                <Chip
+                  label="Active"
+                  size="small"
+                  sx={{
+                    height: 16,
+                    fontSize: '0.55rem',
+                    backgroundColor: '#e8f5e9',
+                    color: '#2e7d32',
+                    fontWeight: 600,
+                    mt: 0.5,
+                    fontFamily: 'Poppins, sans-serif',
+                    '& .MuiChip-label': {
+                      fontFamily: 'Poppins, sans-serif',
+                      px: 1,
+                    }
+                  }}
+                />
+              )}
+            </Box>
+          </Box>
+
+          {/* Current Page */}
+          <Box sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1
+          }}>
+            <DashboardIcon sx={{ color: '#64748b', fontSize: 20 }} />
             <Typography
               variant="h6"
               component="div"
               fontWeight={600}
-              color="#001F3F"
+              color="#1e293b"
               sx={{
-                fontSize: { xs: '1.1rem', sm: '1.25rem' },
-                position: 'relative',
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  left: 0,
-                  bottom: -8,
-                  width: '40px',
-                  height: '3px',
-                  backgroundColor: '#001F3F',
-                  borderRadius: '2px',
-                }
+                fontSize: { xs: '0.95rem', sm: '1.1rem' },
+                whiteSpace: 'nowrap',
+                fontFamily: 'Poppins, sans-serif',
               }}
             >
               {currentPage}
@@ -197,63 +260,148 @@ const Header = () => {
           </Box>
         </Box>
 
-        {/* Right Section: Time, Date, Greeting, User Avatar */}
+        {/* Right Section: DateTime + Greeting + Avatar */}
         <Box sx={{
           display: 'flex',
-          flexDirection: 'row',
           alignItems: 'center',
-          gap: 2
+          gap: { xs: 1, sm: 2 }
         }}>
-          {/* Time */}
-          <Box sx={{ textAlign: 'center', minWidth: 80 }}>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              fontSize={17}
-              fontWeight={500}
-            >
-              {time}
-            </Typography>
+          {/* DateTime Box */}
+          <Box sx={{
+            display: { xs: 'none', md: 'flex' },
+            alignItems: 'center',
+            backgroundColor: '#f8fafc',
+            borderRadius: 2,
+            px: 2,
+            py: 0.8,
+            border: '1px solid #e2e8f0'
+          }}>
+            <Box sx={{ textAlign: 'center', px: 1 }}>
+              <Typography 
+                variant="caption" 
+                color="#64748b" 
+                sx={{ 
+                  fontSize: '0.65rem', 
+                  display: 'block',
+                  fontFamily: 'Poppins, sans-serif',
+                  fontWeight: 500,
+                }}
+              >
+                TIME
+              </Typography>
+              <Typography 
+                variant="body2" 
+                fontWeight={600} 
+                color="#001F3F" 
+                sx={{ 
+                  fontSize: '0.85rem',
+                  fontFamily: 'Poppins, sans-serif',
+                }}
+              >
+                {time}
+              </Typography>
+            </Box>
+            <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+            <Box sx={{ textAlign: 'center', px: 1 }}>
+              <Typography 
+                variant="caption" 
+                color="#64748b" 
+                sx={{ 
+                  fontSize: '0.65rem', 
+                  display: 'block',
+                  fontFamily: 'Poppins, sans-serif',
+                  fontWeight: 500,
+                }}
+              >
+                DATE
+              </Typography>
+              <Typography 
+                variant="body2" 
+                fontWeight={600} 
+                color="#001F3F" 
+                sx={{ 
+                  fontSize: '0.85rem',
+                  fontFamily: 'Poppins, sans-serif',
+                }}
+              >
+                {day}, {date}
+              </Typography>
+            </Box>
           </Box>
 
-          {/* Day & Date */}
-          <Box sx={{ textAlign: 'center', minWidth: 140 }}>
-            <Typography
-              variant="body2"
-              color="#001F3F"
-              fontWeight={500}
-              fontSize={17}
+          {/* Compact DateTime for mobile/tablet */}
+          <Box sx={{
+            display: { xs: 'flex', md: 'none' },
+            alignItems: 'center',
+            mr: 1
+          }}>
+            <Typography 
+              variant="body2" 
+              color="#64748b" 
+              sx={{ 
+                fontSize: '0.75rem',
+                fontFamily: 'Poppins, sans-serif',
+              }}
             >
-              {day.slice(0, 3)}, {date}
+              {time} • {day}, {date}
             </Typography>
           </Box>
 
           {/* Greeting */}
-          <Box sx={{ textAlign: 'center', minWidth: 120 }}>
-            <Typography
-              variant="h6"
-              color="#001F3F"
-              fontWeight={600}
-              fontSize={17}
+          <Box sx={{
+            display: { xs: 'none', lg: 'block' },
+            textAlign: 'right',
+            mr: 1
+          }}>
+            <Typography 
+              variant="caption" 
+              color="#64748b" 
+              sx={{ 
+                fontSize: '0.7rem', 
+                display: 'block',
+                fontFamily: 'Poppins, sans-serif',
+              }}
             >
               {greeting}
+            </Typography>
+            <Typography 
+              variant="body2" 
+              fontWeight={500} 
+              color="#001F3F" 
+              sx={{ 
+                fontSize: '0.85rem',
+                fontFamily: 'Poppins, sans-serif',
+              }}
+            >
+              {currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User'}
             </Typography>
           </Box>
 
           {/* User Avatar */}
           <Tooltip title="Account settings">
-            <IconButton onClick={handleMenuOpen} sx={{ ml: 1 }}>
+            <IconButton
+              onClick={handleMenuOpen}
+              size="small"
+              sx={{
+                ml: 0.5,
+                '&:hover': { backgroundColor: '#f1f5f9' }
+              }}
+            >
               <Avatar
                 sx={{
-                  width: 40,
-                  height: 40,
+                  width: 38,
+                  height: 38,
                   backgroundColor: '#001F3F',
                   color: 'white',
                   fontWeight: 600,
-                  border: '2px solid rgba(0, 31, 63, 0.1)',
+                  fontSize: '0.95rem',
+                  border: '2px solid #e2e8f0',
+                  fontFamily: 'Poppins, sans-serif',
                 }}
               >
-                {currentUser?.email?.charAt(0).toUpperCase() || 'U'}
+                {currentUser?.email?.charAt(0).toUpperCase() || 
+                 currentUser?.displayName?.charAt(0).toUpperCase() || 
+                 'U'}
               </Avatar>
             </IconButton>
           </Tooltip>
@@ -269,44 +417,118 @@ const Header = () => {
           PaperProps={{
             sx: {
               mt: 1,
-              minWidth: 220,
-              borderRadius: 1,
-              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.12)',
-              border: '1px solid rgba(0, 31, 63, 0.08)',
+              minWidth: 260,
+              borderRadius: 2,
+              boxShadow: '0 8px 30px rgba(0, 0, 0, 0.12)',
+              border: '1px solid #e2e8f0',
+              overflow: 'visible',
+              fontFamily: 'Poppins, sans-serif',
             }
           }}
         >
-          <MenuItem disabled sx={{ py: 2 }}>
+          <Box sx={{ px: 2, py: 1.5, backgroundColor: '#f8fafc' }}>
+            <Typography 
+              variant="body2" 
+              fontWeight={600} 
+              color="#001F3F"
+              sx={{ fontFamily: 'Poppins, sans-serif' }}
+            >
+              {currentUser?.displayName || 'User'}
+            </Typography>
+            <Typography 
+              variant="caption" 
+              color="#64748b" 
+              sx={{ 
+                display: 'block', 
+                mt: 0.3,
+                fontFamily: 'Poppins, sans-serif',
+              }}
+            >
+              {currentUser?.email || ''}
+            </Typography>
+          </Box>
+          
+          <Divider />
+          
+          <MenuItem 
+            onClick={handleGoToDashboard} 
+            sx={{ 
+              py: 1.5,
+              '& .MuiTypography-root': {
+                fontFamily: 'Poppins, sans-serif',
+              }
+            }}
+          >
             <ListItemIcon>
-              <PersonIcon fontSize="small" sx={{ color: '#001F3F' }} />
+              <DashboardIcon fontSize="small" sx={{ color: '#001F3F' }} />
+            </ListItemIcon>
+            <Typography color="#001F3F">Dashboard</Typography>
+          </MenuItem>
+
+          <MenuItem 
+            onClick={handleSwitchCompany} 
+            sx={{ 
+              py: 1.5,
+              '& .MuiTypography-root': {
+                fontFamily: 'Poppins, sans-serif',
+              }
+            }}
+          >
+            <ListItemIcon>
+              <BusinessIcon fontSize="small" sx={{ color: '#001F3F' }} />
             </ListItemIcon>
             <Box>
-              <Typography variant="body2" fontWeight={600} color="#001F3F">
-                {currentUser?.email || 'User'}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Administrator
+              <Typography color="#001F3F">Switch Company</Typography>
+              <Typography 
+                variant="caption" 
+                color="#64748b"
+                sx={{ fontFamily: 'Poppins, sans-serif' }}
+              >
+                {selectedCompany?.name || 'No company selected'}
               </Typography>
             </Box>
-
           </MenuItem>
 
-          <MenuItem onClick={handleSwitchCompany} sx={{ py: 1.5 }}>
-            <ListItemIcon>
-              <PersonIcon fontSize="small" sx={{ color: '#001F3F' }} />
-            </ListItemIcon>
-            <Typography color="#001F3F">Switch Company</Typography>
-          </MenuItem>
+          <Divider />
 
-          <MenuItem onClick={handleLogout} sx={{ py: 1.5 }}>
+          <MenuItem 
+            onClick={handleLogout} 
+            sx={{ 
+              py: 1.5,
+              '& .MuiTypography-root': {
+                fontFamily: 'Poppins, sans-serif',
+              }
+            }}
+          >
             <ListItemIcon>
-              <LogoutIcon fontSize="small" sx={{ color: '#001F3F' }} />
+              <LogoutIcon fontSize="small" sx={{ color: '#ef4444' }} />
             </ListItemIcon>
-            <Typography color="#001F3F">Logout</Typography>
+            <Typography color="#ef4444">Logout</Typography>
           </MenuItem>
         </Menu>
       </Toolbar>
-    </AppBar >
+
+      {/* Global style for Poppins font */}
+      <style>
+        {`
+          @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+          
+          * {
+            font-family: 'Poppins', sans-serif !important;
+          }
+          
+          .MuiTypography-root,
+          .MuiMenuItem-root,
+          .MuiChip-root,
+          .MuiButton-root,
+          .MuiInputBase-root,
+          .MuiListItemText-root,
+          .MuiListItemIcon-root {
+            font-family: 'Poppins', sans-serif !important;
+          }
+        `}
+      </style>
+    </AppBar>
   );
 };
 

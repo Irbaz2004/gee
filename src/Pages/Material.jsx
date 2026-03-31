@@ -23,11 +23,8 @@ import {
   Alert,
   Snackbar,
   Chip,
-  CircularProgress,
-  Tooltip,
-  TablePagination,
   InputAdornment,
- 
+  TablePagination
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -35,22 +32,20 @@ import {
   Delete as DeleteIcon,
   Search as SearchIcon,
   Inventory as InventoryIcon,
-  CurrencyRupee as CurrencyRupeeIcon,
-  Code as CodeIcon,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { db } from '../config';
 import {
+  collection,
   addDoc,
   updateDoc,
   deleteDoc,
   doc,
   onSnapshot,
   query,
+  orderBy,
   serverTimestamp
 } from 'firebase/firestore';
-import { useCompany } from '../context/CompanyContext';
-import { getCompanyCollection } from '../utils/firestoreUtils';
 
 // Styled Components
 const NavyButton = styled(Button)(() => ({
@@ -60,7 +55,7 @@ const NavyButton = styled(Button)(() => ({
   padding: '8px 20px',
   textTransform: 'none',
   fontWeight: 600,
-  fontSize: '0.9rem', // Smaller font
+  fontSize: '0.9rem',
   boxShadow: '0 4px 12px rgba(0, 31, 63, 0.25)',
   '&:hover': {
     backgroundColor: '#003366',
@@ -70,7 +65,7 @@ const NavyButton = styled(Button)(() => ({
 }));
 
 const StyledPaper = styled(Paper)(({ theme }) => ({
-  padding: theme.spacing(2), // Reduced padding
+  padding: theme.spacing(2),
   borderRadius: 12,
   backgroundColor: '#ffffff',
   boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
@@ -78,7 +73,6 @@ const StyledPaper = styled(Paper)(({ theme }) => ({
 }));
 
 const Material = () => {
-  const { selectedCompany } = useCompany();
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
@@ -96,12 +90,15 @@ const Material = () => {
   });
   const [formErrors, setFormErrors] = useState({});
 
+  // Fetch materials from global collection
   useEffect(() => {
     const fetchMaterials = async () => {
-      if (!selectedCompany) return;
       try {
-        const materialsRef = getCompanyCollection(db, selectedCompany.id, 'materials');
-        const q = query(materialsRef);
+        setLoading(true);
+        // Use global materials collection (not company-specific)
+        const materialsRef = collection(db, 'materials');
+        const q = query(materialsRef, orderBy('createdAt', 'desc'));
+        
         const unsubscribe = onSnapshot(q, (snapshot) => {
           const materialsList = snapshot.docs.map(doc => ({
             id: doc.id,
@@ -110,28 +107,42 @@ const Material = () => {
           setMaterials(materialsList);
           setLoading(false);
         }, (error) => {
-          showSnackbar('Failed to load materials', error);
-
+          console.error("Error fetching materials:", error);
+          showSnackbar('Failed to load materials', 'error');
           setLoading(false);
         });
+
         return () => unsubscribe();
       } catch (error) {
+        console.error("Error setting up materials listener:", error);
+        showSnackbar('Error fetching materials', 'error');
         setLoading(false);
-        showSnackbar('Error fetching materials', error);
       }
     };
+
     fetchMaterials();
-  }, [selectedCompany]);
+  }, []); // Empty dependency array - runs once on mount
 
   const validateForm = () => {
     const errors = {};
-    if (!formData.materialName.trim()) errors.materialName = 'Required';
-    if (!formData.hsnCode.trim()) {
-      errors.hsnCode = 'Required';
-    } else if (!/^\d{4,8}$/.test(formData.hsnCode)) {
-      errors.hsnCode = '4-8 digits required';
+    if (!formData.materialName.trim()) {
+      errors.materialName = 'Material name is required';
     }
-    if (!formData.rate || parseFloat(formData.rate) <= 0) errors.rate = 'Invalid rate';
+    
+    if (!formData.hsnCode.trim()) {
+      errors.hsnCode = 'HSN code is required';
+    } else if (!/^\d{4,8}$/.test(formData.hsnCode)) {
+      errors.hsnCode = 'HSN code must be 4-8 digits';
+    }
+    
+    if (!formData.rate) {
+      errors.rate = 'Rate is required';
+    } else if (parseFloat(formData.rate) <= 0) {
+      errors.rate = 'Rate must be greater than 0';
+    } else if (isNaN(parseFloat(formData.rate))) {
+      errors.rate = 'Invalid rate';
+    }
+    
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -139,7 +150,10 @@ const Material = () => {
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    if (formErrors[name]) setFormErrors(prev => ({ ...prev, [name]: '' }));
+    // Clear error for this field if it exists
+    if (formErrors[name]) {
+      setFormErrors(prev => ({ ...prev, [name]: '' }));
+    }
   };
 
   const resetForm = () => {
@@ -151,9 +165,9 @@ const Material = () => {
   const handleOpenDialog = (material = null) => {
     if (material) {
       setFormData({
-        materialName: material.materialName,
-        hsnCode: material.hsnCode,
-        rate: material.rate.toString()
+        materialName: material.materialName || '',
+        hsnCode: material.hsnCode || '',
+        rate: material.rate?.toString() || ''
       });
       setEditingMaterial(material);
     } else {
@@ -179,19 +193,24 @@ const Material = () => {
 
   const handleAddMaterial = async () => {
     if (!validateForm()) return;
+    
     try {
       setLoading(true);
-      const materialsRef = getCompanyCollection(db, selectedCompany.id, 'materials');
+      // Save to global materials collection
+      const materialsRef = collection(db, 'materials');
       await addDoc(materialsRef, {
-        ...formData,
+        materialName: formData.materialName.trim(),
+        hsnCode: formData.hsnCode.trim(),
         rate: parseFloat(formData.rate),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      showSnackbar('Material added successfully!');
+      
+      showSnackbar('Material added successfully!', 'success');
       handleCloseDialog();
     } catch (error) {
-      showSnackbar('Error adding material', error);
+      console.error("Error adding material:", error);
+      showSnackbar('Error adding material: ' + error.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -199,51 +218,107 @@ const Material = () => {
 
   const handleUpdateMaterial = async () => {
     if (!validateForm() || !editingMaterial) return;
+    
     try {
       setLoading(true);
-      const materialRef = doc(db, 'companies', selectedCompany.id, 'materials', editingMaterial.id);
+      // Update in global materials collection
+      const materialRef = doc(db, 'materials', editingMaterial.id);
       await updateDoc(materialRef, {
-        ...formData,
+        materialName: formData.materialName.trim(),
+        hsnCode: formData.hsnCode.trim(),
         rate: parseFloat(formData.rate),
         updatedAt: serverTimestamp()
       });
-      showSnackbar('Material updated!');
+      
+      showSnackbar('Material updated successfully!', 'success');
       handleCloseDialog();
     } catch (error) {
-      showSnackbar('Update failed', error);
+      console.error("Error updating material:", error);
+      showSnackbar('Update failed: ' + error.message, 'error');
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteMaterial = async () => {
+    if (!materialToDelete) return;
+    
     try {
       setLoading(true);
-      const materialRef = doc(db, 'companies', selectedCompany.id, 'materials', materialToDelete.id);
+      // Delete from global materials collection
+      const materialRef = doc(db, 'materials', materialToDelete.id);
       await deleteDoc(materialRef);
-      showSnackbar('Material deleted');
+      
+      showSnackbar('Material deleted successfully!', 'success');
       handleCloseDeleteDialog();
     } catch (error) {
-      showSnackbar('Delete failed', error);
+      console.error("Error deleting material:", error);
+      showSnackbar('Delete failed: ' + error.message, 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const showSnackbar = (message, severity = 'success') => setSnackbar({ open: true, message, severity });
-  const handleCloseSnackbar = () => setSnackbar(prev => ({ ...prev, open: false }));
+  const showSnackbar = (message, severity = 'success') => {
+    setSnackbar({ open: true, message, severity });
+  };
 
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
+  // Filter materials based on search query
   const filteredMaterials = materials.filter(material =>
-    material.materialName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    material.hsnCode.includes(searchQuery)
+    material.materialName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    material.hsnCode?.includes(searchQuery)
   );
 
-  const paginatedMaterials = filteredMaterials.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  // Paginate materials
+  const paginatedMaterials = filteredMaterials.slice(
+    page * rowsPerPage,
+    page * rowsPerPage + rowsPerPage
+  );
+
+  // Handle page change
+  const handleChangePage = (event, newPage) => {
+    setPage(newPage);
+  };
+
+  // Handle rows per page change
+  const handleChangeRowsPerPage = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+  };
+
+  // Format date
+  const formatDate = (timestamp) => {
+    if (!timestamp) return '---';
+    if (timestamp?.toDate) {
+      return new Date(timestamp.toDate()).toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+    }
+    return '---';
+  };
 
   return (
     <Container maxWidth="xl" sx={{ py: 3, backgroundColor: '#ffffff', minHeight: '80vh', borderRadius: 2 }}>
-      <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={handleCloseSnackbar} anchorOrigin={{ vertical: 'top', horizontal: 'right' }}>
-        <Alert severity={snackbar.severity} sx={{ width: '100%' }}>{snackbar.message}</Alert>
+      {/* Snackbar for notifications */}
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={3000} 
+        onClose={handleCloseSnackbar} 
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Alert 
+          onClose={handleCloseSnackbar} 
+          severity={snackbar.severity} 
+          sx={{ width: '100%', fontWeight: 500 }}
+        >
+          {snackbar.message}
+        </Alert>
       </Snackbar>
 
       {/* Header Area */}
@@ -256,11 +331,15 @@ const Material = () => {
                 Material Management
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Inventory control and pricing
+                Global inventory control and pricing
               </Typography>
             </Box>
           </Box>
-          <NavyButton startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
+          <NavyButton 
+            startIcon={<AddIcon />} 
+            onClick={() => handleOpenDialog()}
+            disabled={loading}
+          >
             Add Material
           </NavyButton>
         </Box>
@@ -269,7 +348,7 @@ const Material = () => {
         <Card sx={{ backgroundColor: '#001F3F', borderRadius: 3, overflow: 'visible' }}>
           <CardContent sx={{ py: '16px !important' }}>
             <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={2.5}minWidth={'200px'}>
+              <Grid item xs={12} md={2.5}minWidth={'300px'}>
                 <Box sx={{ backgroundColor: "white", px: 2, py: 1, borderRadius: 2, textAlign: 'center' }}>
                   <Typography variant="caption" color='#64748b' fontWeight={700} sx={{ textTransform: 'uppercase' }}>
                     Total Items
@@ -279,7 +358,7 @@ const Material = () => {
                   </Typography>
                 </Box>
               </Grid>
-              <Grid item xs={12} md={9.5}minWidth={'600px'}>
+              <Grid item xs={12} md={9.5}minWidth={'400px'}>
                 <TextField
                   fullWidth
                   placeholder="Search by material name or HSN code..."
@@ -298,6 +377,10 @@ const Material = () => {
                       borderRadius: 2,
                       '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
                       '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
+                      '& .MuiInputBase-input::placeholder': {
+                        color: 'rgba(255,255,255,0.5)',
+                        opacity: 1,
+                      },
                     }
                   }}
                 />
@@ -309,87 +392,248 @@ const Material = () => {
 
       {/* Table Section */}
       <StyledPaper elevation={0}>
-        <TableContainer sx={{ maxHeight: '50vh',minHeight: 260 }}>
+        <TableContainer sx={{ maxHeight: '50vh', minHeight: 300 }}>
           <Table stickyHeader size="small">
             <TableHead>
               <TableRow>
-                {['S.No', 'Material Name', 'HSN Code', 'Rate (₹)', 'Updated', 'Actions'].map((head) => (
-                  <TableCell key={head} sx={{ backgroundColor: '#f8fafc', color: '#475569', fontWeight: 700, fontSize: '0.75rem', py: 1.5 }}>
-                    {head}
-                  </TableCell>
-                ))}
+                <TableCell sx={{ backgroundColor: '#f8fafc', color: '#475569', fontWeight: 700, fontSize: '0.75rem', py: 1.5, width: '5%' }}>
+                  S.No
+                </TableCell>
+                <TableCell sx={{ backgroundColor: '#f8fafc', color: '#475569', fontWeight: 700, fontSize: '0.75rem', py: 1.5, width: '30%' }}>
+                  Material Name
+                </TableCell>
+                <TableCell sx={{ backgroundColor: '#f8fafc', color: '#475569', fontWeight: 700, fontSize: '0.75rem', py: 1.5, width: '15%' }}>
+                  HSN Code
+                </TableCell>
+                <TableCell sx={{ backgroundColor: '#f8fafc', color: '#475569', fontWeight: 700, fontSize: '0.75rem', py: 1.5, width: '15%' }}>
+                  Rate (₹)
+                </TableCell>
+                <TableCell sx={{ backgroundColor: '#f8fafc', color: '#475569', fontWeight: 700, fontSize: '0.75rem', py: 1.5, width: '20%' }}>
+                  Last Updated
+                </TableCell>
+                <TableCell sx={{ backgroundColor: '#f8fafc', color: '#475569', fontWeight: 700, fontSize: '0.75rem', py: 1.5, width: '15%', textAlign: 'center' }}>
+                  Actions
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {paginatedMaterials.map((material, index) => (
-                <TableRow key={material.id} hover sx={{ '&:last-child td': { border: 0 } }}>
-                  <TableCell sx={{ fontSize: '0.85rem' }}>{ (page * rowsPerPage) + index + 1 }</TableCell>
-                  <TableCell sx={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>{material.materialName}</TableCell>
-                  <TableCell>
-                    <Chip label={material.hsnCode} size="small" sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, backgroundColor: '#f1f5f9' }} />
-                  </TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#10b981', fontSize: '0.85rem' }}>
-                    {new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2 }).format(material.rate)}
-                  </TableCell>
-                  <TableCell sx={{ fontSize: '0.75rem', color: '#64748b' }}>
-                    {material.updatedAt?.toDate ? new Date(material.updatedAt.toDate()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '---'}
-                  </TableCell>
-                  <TableCell align="center">
-                    <Box display="flex" gap={0.5}>
-                      <IconButton size="small" onClick={() => handleOpenDialog(material)} sx={{ color: '#3b82f6' }}>
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                      <IconButton size="small" onClick={() => handleOpenDeleteDialog(material)} sx={{ color: '#ef4444' }}>
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Box>
+              {loading && materials.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} align="center" sx={{ py: 5 }}>
+                    <Typography color="text.secondary">Loading materials...</Typography>
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : paginatedMaterials.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} align="center" sx={{ py: 5 }}>
+                    <InventoryIcon sx={{ fontSize: 48, color: '#ccc', mb: 2 }} />
+                    <Typography color="text.secondary" gutterBottom>
+                      No materials found
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      startIcon={<AddIcon />}
+                      onClick={() => handleOpenDialog()}
+                      sx={{ mt: 1, borderColor: '#001F3F', color: '#001F3F' }}
+                    >
+                      Add your first material
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                paginatedMaterials.map((material, index) => (
+                  <TableRow key={material.id} hover sx={{ '&:last-child td': { border: 0 } }}>
+                    <TableCell sx={{ fontSize: '0.85rem' }}>
+                      {(page * rowsPerPage) + index + 1}
+                    </TableCell>
+                    <TableCell sx={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>
+                      {material.materialName}
+                    </TableCell>
+                    <TableCell>
+                      <Chip 
+                        label={material.hsnCode} 
+                        size="small" 
+                        sx={{ 
+                          height: 20, 
+                          fontSize: '0.7rem', 
+                          fontWeight: 600, 
+                          backgroundColor: '#f1f5f9',
+                          fontFamily: 'monospace'
+                        }} 
+                      />
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700, color: '#10b981', fontSize: '0.85rem' }}>
+                      ₹ {new Intl.NumberFormat('en-IN', { 
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2 
+                      }).format(material.rate || 0)}
+                    </TableCell>
+                    <TableCell sx={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      {formatDate(material.updatedAt || material.createdAt)}
+                    </TableCell>
+                    <TableCell align="center">
+                      <Box display="flex" gap={0.5} justifyContent="center">
+                        <IconButton 
+                          size="small" 
+                          onClick={() => handleOpenDialog(material)} 
+                          sx={{ color: '#3b82f6' }}
+                          title="Edit material"
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton 
+                          size="small" 
+                          onClick={() => handleOpenDeleteDialog(material)} 
+                          sx={{ color: '#ef4444' }}
+                          title="Delete material"
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </TableContainer>
+        
+        {/* Pagination */}
         <TablePagination
-          rowsPerPageOptions={[10, 25]}
+          rowsPerPageOptions={[10, 25, 50]}
           component="div"
           count={filteredMaterials.length}
           rowsPerPage={rowsPerPage}
           page={page}
-          onPageChange={(e, p) => setPage(p)}
-          onRowsPerPageChange={(e) => setRowsPerPage(parseInt(e.target.value, 10))}
+          onPageChange={handleChangePage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+          sx={{
+            borderTop: '1px solid #edf2f7',
+            '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
+              fontSize: '0.85rem',
+            }
+          }}
         />
       </StyledPaper>
 
-     
-
-      {/* Dialogs remain mostly same but with smaller padding/text */}
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ backgroundColor: '#001F3F', color: 'white', py: 2, fontSize: '1.1rem' }}>
+      {/* Add/Edit Material Dialog */}
+      <Dialog 
+        open={openDialog} 
+        onClose={handleCloseDialog} 
+        maxWidth="xs" 
+        fullWidth
+        PaperProps={{
+          sx: { borderRadius: 2 }
+        }}
+      >
+        <DialogTitle sx={{ 
+          backgroundColor: '#001F3F', 
+          color: 'white', 
+          py: 2, 
+          fontSize: '1.1rem',
+          fontWeight: 600
+        }}>
           {editingMaterial ? 'Edit Material' : 'Add New Material'}
         </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          <TextField fullWidth label="Material Name" name="materialName" size="small" value={formData.materialName} onChange={handleInputChange} error={!!formErrors.materialName} sx={{ mb: 2, mt: 1 }} />
-          <TextField fullWidth label="HSN Code" name="hsnCode" size="small" value={formData.hsnCode} onChange={handleInputChange} error={!!formErrors.hsnCode} sx={{ mb: 2 }} />
-          <TextField fullWidth label="Rate (₹)" name="rate" type="number" size="small" value={formData.rate} onChange={handleInputChange} error={!!formErrors.rate} />
+        <DialogContent sx={{ mt: 2, pb: 1 }}>
+          <TextField
+            fullWidth
+            label="Material Name"
+            name="materialName"
+            size="small"
+            value={formData.materialName}
+            onChange={handleInputChange}
+            error={!!formErrors.materialName}
+            helperText={formErrors.materialName}
+            sx={{ mb: 2.5, mt: 2 }}
+            required
+          />
+          <TextField
+            fullWidth
+            label="HSN Code"
+            name="hsnCode"
+            size="small"
+            value={formData.hsnCode}
+            onChange={handleInputChange}
+            error={!!formErrors.hsnCode}
+            helperText={formErrors.hsnCode || '4-8 digits'}
+            sx={{ mb: 2.5 }}
+            required
+            inputProps={{ maxLength: 8 }}
+          />
+          <TextField
+            fullWidth
+            label="Rate (₹)"
+            name="rate"
+            type="number"
+            size="small"
+            value={formData.rate}
+            onChange={handleInputChange}
+            error={!!formErrors.rate}
+            helperText={formErrors.rate}
+            required
+            InputProps={{
+              inputProps: { 
+                min: 0.01, 
+                step: 0.01 
+              }
+            }}
+          />
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={handleCloseDialog} size="small">Cancel</Button>
-          <NavyButton onClick={editingMaterial ? handleUpdateMaterial : handleAddMaterial} disabled={loading}>
-            {editingMaterial ? 'Update' : 'Add Material'}
+        <DialogActions sx={{ p: 2.5, pt: 1 }}>
+          <Button 
+            onClick={handleCloseDialog} 
+            size="small"
+            sx={{ color: '#64748b' }}
+          >
+            Cancel
+          </Button>
+          <NavyButton 
+            onClick={editingMaterial ? handleUpdateMaterial : handleAddMaterial} 
+            disabled={loading}
+            size="small"
+          >
+            {loading ? 'Saving...' : (editingMaterial ? 'Update' : 'Add Material')}
           </NavyButton>
         </DialogActions>
       </Dialog>
 
-      {/* Delete Dialog */}
-      <Dialog open={openDeleteDialog} onClose={handleCloseDeleteDialog}>
-        <DialogContent sx={{ textAlign: 'center', pt: 4 }}>
-          <DeleteIcon sx={{ fontSize: 48, color: '#ef4444', mb: 2 }} />
-          <Typography variant="h6">Delete Material?</Typography>
-          <Typography variant="body2" color="text.secondary">This action cannot be undone.</Typography>
+      {/* Delete Confirmation Dialog */}
+      <Dialog 
+        open={openDeleteDialog} 
+        onClose={handleCloseDeleteDialog}
+        PaperProps={{
+          sx: { borderRadius: 2 }
+        }}
+      >
+        <DialogContent sx={{ textAlign: 'center', pt: 4, pb: 3, px: 4 }}>
+          <DeleteIcon sx={{ fontSize: 56, color: '#ef4444', mb: 2 }} />
+          <Typography variant="h6" gutterBottom fontWeight={600}>
+            Delete Material?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Are you sure you want to delete "{materialToDelete?.materialName}"?
+          </Typography>
+          <Typography variant="caption" color="error" sx={{ display: 'block' }}>
+            This action cannot be undone.
+          </Typography>
         </DialogContent>
-        <DialogActions sx={{ pb: 3, px: 3, justifyContent: 'center' }}>
-          <Button onClick={handleCloseDeleteDialog}>Cancel</Button>
-          <Button onClick={handleDeleteMaterial} variant="contained" color="error">Delete</Button>
+        <DialogActions sx={{ pb: 3, px: 3, justifyContent: 'center', gap: 2 }}>
+          <Button 
+            onClick={handleCloseDeleteDialog}
+            variant="outlined"
+            sx={{ borderColor: '#ddd', color: '#64748b' }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleDeleteMaterial} 
+            variant="contained" 
+            color="error"
+            disabled={loading}
+          >
+            {loading ? 'Deleting...' : 'Delete'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Container>

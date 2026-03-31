@@ -24,7 +24,7 @@ import {
 import { styled } from '@mui/material/styles';
 import { useAuth } from '../Auth/authcontext';
 
-const drawerWidth = 280;
+const drawerWidth = 270;
 
 const StyledDrawer = styled(Drawer)(() => ({
   width: drawerWidth,

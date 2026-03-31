@@ -1,6 +1,5 @@
-// AdminData.jsx
 import React, { useState, useEffect } from "react";
-import {  addDoc, getDocs, query, orderBy, limit } from "firebase/firestore";
+import { addDoc, getDocs, query, orderBy, limit } from "firebase/firestore";
 import { db } from "../config";
 import { useCompany } from "../context/CompanyContext";
 import { getCompanyCollection } from "../utils/firestoreUtils";
@@ -14,6 +13,14 @@ const AdminData = () => {
     companyGSTIN: "",
     companyContact: "",
     companyDescription: "",
+    companyState: "Tamil Nadu",
+    // Bank Details
+    accountName: "",
+    accountNumber: "",
+    bank: "",
+    branch: "",
+    ifscCode: "",
+    gpayNumber: "",
   });
 
   const [companyLogo, setCompanyLogo] = useState(null);
@@ -69,7 +76,7 @@ const AdminData = () => {
             return;
           } catch (e) {
             // Continue trying other extensions
-            console.log(`Logo not found for ${companyName} with extension ${ext,e}`);
+            console.log(`Logo not found for ${companyName} with extension ${ext}`);
           }
         }
         // If no logo found, set error
@@ -106,6 +113,14 @@ const AdminData = () => {
           companyGSTIN: latestData.companyGSTIN || "",
           companyContact: latestData.companyContact || "",
           companyDescription: latestData.companyDescription || "",
+          companyState: latestData.companyState || "Tamil Nadu",
+          // Bank Details
+          accountName: latestData.accountName || "",
+          accountNumber: latestData.accountNumber || "",
+          bank: latestData.bank || "",
+          branch: latestData.branch || "",
+          ifscCode: latestData.ifscCode || "",
+          gpayNumber: latestData.gpayNumber || "",
         });
         showNotification("Company details loaded successfully!", "success");
       } else {
@@ -173,7 +188,7 @@ const AdminData = () => {
         </div>
       )}
 
-      <h1 style={styles.title}>Company Details Configuration :</h1>
+      <h1 style={styles.title}>Company Details Configuration</h1>
 
       <div style={styles.content}>
         {/* Logo Display */}
@@ -205,79 +220,171 @@ const AdminData = () => {
           {loading ? (
             <div style={styles.loading}>Loading company details...</div>
           ) : (
-            <div style={styles.formGrid}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Company Name *</label>
-                <input
-                  type="text"
-                  name="companyName"
-                  value={adminData.companyName}
-                  onChange={handleInputChange}
-                  style={styles.input}
-                  placeholder="Enter company name"
-                />
+            <>
+              <div style={styles.formGrid}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Company Name *</label>
+                  <input
+                    type="text"
+                    name="companyName"
+                    value={adminData.companyName}
+                    onChange={handleInputChange}
+                    style={styles.input}
+                    placeholder="Enter company name"
+                  />
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Company Address</label>
+                  <textarea
+                    name="companyAddress"
+                    value={adminData.companyAddress}
+                    onChange={handleInputChange}
+                    rows="3"
+                    style={styles.textarea}
+                    placeholder="Enter company address"
+                  />
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Company Email</label>
+                  <input
+                    type="email"
+                    name="companyEmail"
+                    value={adminData.companyEmail}
+                    onChange={handleInputChange}
+                    style={styles.input}
+                    placeholder="Enter company email"
+                  />
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Company GSTIN *</label>
+                  <input
+                    type="text"
+                    name="companyGSTIN"
+                    value={adminData.companyGSTIN}
+                    onChange={handleInputChange}
+                    style={styles.input}
+                    placeholder="Enter GSTIN number"
+                  />
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Company Contact</label>
+                  <input
+                    type="text"
+                    name="companyContact"
+                    value={adminData.companyContact}
+                    onChange={handleInputChange}
+                    style={styles.input}
+                    placeholder="Enter contact number"
+                  />
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Company State</label>
+                  <input
+                    type="text"
+                    name="companyState"
+                    value={adminData.companyState}
+                    onChange={handleInputChange}
+                    style={styles.input}
+                    placeholder="Enter state"
+                  />
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Company Description</label>
+                  <textarea
+                    name="companyDescription"
+                    value={adminData.companyDescription}
+                    onChange={handleInputChange}
+                    rows="4"
+                    style={styles.textarea}
+                    placeholder="Enter company description"
+                  />
+                </div>
               </div>
 
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Company Address</label>
-                <textarea
-                  name="companyAddress"
-                  value={adminData.companyAddress}
-                  onChange={handleInputChange}
-                  rows="3"
-                  style={styles.textarea}
-                  placeholder="Enter company address"
-                />
-              </div>
+              {/* Bank Details Section */}
+              <div style={styles.bankSection}>
+                <h3 style={styles.sectionTitle}>Bank Details</h3>
+                <div style={styles.formGrid}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Account Name</label>
+                    <input
+                      type="text"
+                      name="accountName"
+                      value={adminData.accountName}
+                      onChange={handleInputChange}
+                      style={styles.input}
+                      placeholder="Enter account name"
+                    />
+                  </div>
 
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Company Email</label>
-                <input
-                  type="email"
-                  name="companyEmail"
-                  value={adminData.companyEmail}
-                  onChange={handleInputChange}
-                  style={styles.input}
-                  placeholder="Enter company email"
-                />
-              </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Account Number</label>
+                    <input
+                      type="text"
+                      name="accountNumber"
+                      value={adminData.accountNumber}
+                      onChange={handleInputChange}
+                      style={styles.input}
+                      placeholder="Enter account number"
+                    />
+                  </div>
 
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Company GSTIN *</label>
-                <input
-                  type="text"
-                  name="companyGSTIN"
-                  value={adminData.companyGSTIN}
-                  onChange={handleInputChange}
-                  style={styles.input}
-                  placeholder="Enter GSTIN number"
-                />
-              </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Bank Name</label>
+                    <input
+                      type="text"
+                      name="bank"
+                      value={adminData.bank}
+                      onChange={handleInputChange}
+                      style={styles.input}
+                      placeholder="Enter bank name"
+                    />
+                  </div>
 
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Company Contact</label>
-                <input
-                  type="text"
-                  name="companyContact"
-                  value={adminData.companyContact}
-                  onChange={handleInputChange}
-                  style={styles.input}
-                  placeholder="Enter contact number"
-                />
-              </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Branch</label>
+                    <input
+                      type="text"
+                      name="branch"
+                      value={adminData.branch}
+                      onChange={handleInputChange}
+                      style={styles.input}
+                      placeholder="Enter branch name"
+                    />
+                  </div>
 
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Company Description</label>
-                <textarea
-                  name="companyDescription"
-                  value={adminData.companyDescription}
-                  onChange={handleInputChange}
-                  rows="4"
-                  style={styles.textarea}
-                  placeholder="Enter company description"
-                />
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>IFSC Code</label>
+                    <input
+                      type="text"
+                      name="ifscCode"
+                      value={adminData.ifscCode}
+                      onChange={handleInputChange}
+                      style={styles.input}
+                      placeholder="Enter IFSC code"
+                    />
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>G-Pay Number</label>
+                    <input
+                      type="text"
+                      name="gpayNumber"
+                      value={adminData.gpayNumber}
+                      onChange={handleInputChange}
+                      style={styles.input}
+                      placeholder="Enter G-Pay number"
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
+            </>
           )}
 
           <div style={styles.buttonContainer}>
@@ -404,6 +511,11 @@ const styles = {
     padding: "30px",
     borderRadius: "10px",
     border: "2px solid #001F3F",
+  },
+  bankSection: {
+    marginTop: "30px",
+    paddingTop: "20px",
+    borderTop: "2px dashed #001F3F",
   },
   sectionTitle: {
     color: "#001F3F",
